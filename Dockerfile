@@ -19,6 +19,11 @@ RUN npm run build
 # Production stage
 FROM node:20-alpine AS production
 
+# Add labels for the image
+LABEL maintainer="Javi Moreno <email@javier-moreno.com>"
+LABEL description="Transform any HTML page into an RSS feed"
+LABEL source="https://github.com/ciberado/verydirtyrss"
+
 # Set the working directory inside the container
 WORKDIR /app
 
