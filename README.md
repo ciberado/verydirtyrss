@@ -28,6 +28,33 @@ docker build -t verydirtyrss .
 docker run -p 3000:3000 verydirtyrss
 ```
 
+### Using Docker Compose with Tailscale
+
+For private network access via Tailscale:
+
+```bash
+# Copy environment template
+cp .env.example .env
+
+# Edit .env and add your Tailscale auth key
+# Get your auth key from: https://login.tailscale.com/admin/settings/keys
+vim .env
+
+# Start services
+docker-compose up -d
+
+# Check status
+docker-compose ps
+
+# View logs
+docker-compose logs -f
+
+# Stop services
+docker-compose down
+```
+
+Once running, the service will be accessible via your Tailscale network at the hostname `verydirtyrss`.
+
 ### Local Development
 
 ```bash
@@ -105,6 +132,7 @@ API documentation and endpoint information.
 
 ## Docker Commands
 
+### Standard Docker
 ```bash
 # Build image
 npm run docker:build
@@ -114,6 +142,18 @@ npm run docker:run
 
 # Development with volume mounting
 npm run docker:dev
+```
+
+### Docker Compose with Tailscale
+```bash
+# Start services with Tailscale
+npm run compose:up
+
+# Stop services
+npm run compose:down
+
+# View logs
+npm run compose:logs
 ```
 
 ## Development
