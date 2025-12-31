@@ -1,0 +1,29 @@
+{
+  "name": "verydirtyrss",
+  "version": "1.0.0",
+  "description": "A simple way of transforming HTML pages into RSS feeds.",
+  "type": "module",
+  "scripts": {
+    "start": "node dist/index.js",
+    "build": "tsc",
+    "dev": "concurrently \"tsc --watch\" \"nodemon --watch 'src/**/*.ts' --exec 'ts-node' src/index.ts\"",
+    "docker:build": "docker build -t verydirtyrss .",
+    "docker:run": "docker run -p 3000:3000 verydirtyrss",
+    "docker:dev": "docker run -p 3000:3000 -v $(pwd)/src:/app/src verydirtyrss"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "cheerio": "^1.0.0-rc.12",
+    "axios": "^1.6.2",
+    "rss": "^1.2.2"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.10.6",
+    "@types/rss": "^0.0.32",
+    "concurrently": "^8.2.2",
+    "nodemon": "^3.0.2",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
+  }
+}
