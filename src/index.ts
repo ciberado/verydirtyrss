@@ -103,7 +103,7 @@ app.get('/', (_req, res) => {
   res.json({
     name: 'VeryDirtyRSS',
     description: 'Transform any HTML page into an RSS feed',
-    version: '1.0.0',
+    version: '1.1.0',
     endpoints: {
       '/rss': {
         method: 'GET',
