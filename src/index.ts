@@ -5,6 +5,7 @@ import RSS from 'rss';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const USER_AGENT = 'Mozilla/5.0 (compatible; VeryDirtyRSS/1.0; +https://github.com/verydirtyrss)';
 
 // Helper function to resolve relative URLs
 function resolveUrl(url: string, base: string): string {
@@ -45,6 +46,17 @@ function extractDate(element: cheerio.Cheerio<any>, selector: string): Date | nu
   return isNaN(date.getTime()) ? null : date;
 }
 
+// Helper function to locate the previous page URL from the current page
+function extractPreviousPageUrl($: cheerio.CheerioAPI, selector: string, currentPageUrl: string): string {
+  if (!selector) return '';
+
+  const target = $(selector).first();
+  if (!target.length) return '';
+
+  const href = target.attr('href') || target.find('a').first().attr('href') || '';
+  return href ? resolveUrl(href, currentPageUrl) : '';
+}
+
 // Main RSS generation endpoint
 app.get('/rss', async (req, res) => {
   try {
@@ -62,42 +74,54 @@ app.get('/rss', async (req, res) => {
     const modifiedSelector = searchParams.modified as string || '.modified-date time';
     const contentSelector = searchParams.content as string || '.post-content';
     const creatorSelector = searchParams.creator as string || '.author-date a';
+    const previousSelector = searchParams.previous as string || '';
     
-    console.log(`Fetching: ${targetUrl.href}`);
-    
-    // Fetch the HTML page
-    const response = await axios.get(targetUrl.href, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; VeryDirtyRSS/1.0; +https://github.com/verydirtyrss)',
-      },
-      timeout: 10000,
-    });
-    
-    const $ = cheerio.load(response.data);
-    
-    // Extract site information
-    const siteTitle = $('title').text().trim() || $('h1').first().text().trim() || 'RSS Feed';
-    const siteDescription = $('meta[name="description"]').attr('content') || 
-                          $('meta[property="og:description"]').attr('content') || 
-                          'Generated RSS feed from HTML page';
-    
-    // Create RSS feed
-    const feed = new RSS({
-      title: siteTitle,
-      description: siteDescription,
-      feed_url: `${req.protocol}://${req.get('host')}${req.originalUrl}`,
-      site_url: siteUrl,
-      language: $('html').attr('lang') || 'en',
-      pubDate: new Date(),
-      generator: 'VeryDirtyRSS'
-    });
-    
-    // Extract items
-    const items = $(itemSelector);
-    console.log(`Found ${items.length} items using selector: ${itemSelector}`);
-    
-    for (let i = 0; i < items.length; i++) {
-      const item = items.eq(i);
+    let currentPageUrl = targetUrl.href;
+    const visitedPageUrls = new Set<string>();
+    let pageNumber = 0;
+    let feed: RSS | null = null;
+
+    while (true) {
+      if (visitedPageUrls.has(currentPageUrl)) {
+        console.warn(`Stopping pagination: already visited ${currentPageUrl}`);
+        break;
+      }
+
+      visitedPageUrls.add(currentPageUrl);
+      pageNumber += 1;
+      console.log(`Fetching page ${pageNumber}: ${currentPageUrl}`);
+
+      const response = await axios.get(currentPageUrl, {
+        headers: {
+          'User-Agent': USER_AGENT,
+        },
+        timeout: 10000,
+      });
+
+      const $ = cheerio.load(response.data);
+
+      if (!feed) {
+        const siteTitle = $('title').text().trim() || $('h1').first().text().trim() || 'RSS Feed';
+        const siteDescription = $('meta[name="description"]').attr('content') ||
+          $('meta[property="og:description"]').attr('content') ||
+          'Generated RSS feed from HTML page';
+
+        feed = new RSS({
+          title: siteTitle,
+          description: siteDescription,
+          feed_url: `${req.protocol}://${req.get('host')}${req.originalUrl}`,
+          site_url: siteUrl,
+          language: $('html').attr('lang') || 'en',
+          pubDate: new Date(),
+          generator: 'VeryDirtyRSS'
+        });
+      }
+
+      const items = $(itemSelector);
+      console.log(`Found ${items.length} items using selector: ${itemSelector} on page ${pageNumber}`);
+
+      for (let i = 0; i < items.length; i++) {
+        const item = items.eq(i);
       
       // Extract basic item data
       const title = extractText(item, titleSelector);
@@ -113,11 +137,11 @@ app.get('/rss', async (req, res) => {
       let content = description;
       
       // If we have a link and contentSelector is specified, try to fetch full content
-      if (link && contentSelector && searchParams.fetchContent === 'true') {
+        if (link && contentSelector && searchParams.fetchContent === 'true') {
         try {
           const articleResponse = await axios.get(link, {
             headers: {
-              'User-Agent': 'Mozilla/5.0 (compatible; VeryDirtyRSS/1.0; +https://github.com/verydirtyrss)',
+              'User-Agent': USER_AGENT,
             },
             timeout: 5000,
           });
@@ -132,14 +156,31 @@ app.get('/rss', async (req, res) => {
       }
       
       // Add item to RSS feed
-      feed.item({
-        title: title || 'Untitled',
-        description: content || description || 'No description available',
-        url: link || siteUrl,
-        author: creator || undefined,
-        date: pubDate || modifiedDate || new Date(),
-        enclosure: imageUrl ? { url: imageUrl } : undefined,
-      });
+        feed.item({
+          title: title || 'Untitled',
+          description: content || description || 'No description available',
+          url: link || siteUrl,
+          author: creator || undefined,
+          date: pubDate || modifiedDate || new Date(),
+          enclosure: imageUrl ? { url: imageUrl } : undefined,
+        });
+      }
+
+      if (!previousSelector) {
+        break;
+      }
+
+      const previousPageUrl = extractPreviousPageUrl($, previousSelector, currentPageUrl);
+      if (!previousPageUrl) {
+        console.log(`No previous page found with selector: ${previousSelector}`);
+        break;
+      }
+
+      currentPageUrl = previousPageUrl;
+    }
+
+    if (!feed) {
+      throw new Error('Unable to initialize RSS feed from target page');
     }
     
     // Return RSS XML
@@ -181,9 +222,10 @@ app.get('/', (_req, res) => {
           modified: 'CSS selector for modified dates (default: .modified-date time)',
           content: 'CSS selector for full content (default: .post-content)',
           creator: 'CSS selector for authors (default: .author-date a)',
+          previous: 'CSS selector for previous entries link/button (default: disabled)',
           fetchContent: 'Set to "true" to fetch full article content (default: false)'
         },
-        example: '/rss?url=https://example.com/blog&item=.article&title=h2&description=.excerpt'
+        example: '/rss?url=https://example.com/blog&item=.article&title=h2&description=.excerpt&previous=.pagination .prev a'
       }
     }
   });

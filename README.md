@@ -100,6 +100,7 @@ GET /rss?url=https://www.vozpopuli.com/redaccion/roger-senserrich&item=article&t
 | `modified` | CSS selector for modified dates | `.modified-date time` |
 | `content` | CSS selector for full content | `.post-content` |
 | `creator` | CSS selector for authors | `.author-date a` |
+| `previous` | CSS selector for previous entries button/link to crawl older pages recursively | disabled |
 | `fetchContent` | Set to `"true"` to fetch full article content | `false` |
 
 ## Examples
@@ -117,6 +118,11 @@ curl "http://localhost:3000/rss?url=https://example.com/blog&item=.article&title
 ### With Full Content Fetching
 ```bash
 curl "http://localhost:3000/rss?url=https://example.com/blog&fetchContent=true&content=.post-body"
+```
+
+### Crawl All Previous Entries
+```bash
+curl "http://localhost:3000/rss?url=https://example.com/blog&item=.article&title=h2&link=a&previous=.pagination .prev a"
 ```
 
 ## API Endpoints
