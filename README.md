@@ -101,6 +101,8 @@ GET /rss?url=https://www.vozpopuli.com/redaccion/roger-senserrich&item=article&t
 | `content` | CSS selector for full content | `.post-content` |
 | `creator` | CSS selector for authors | `.author-date a` |
 | `previous` | CSS selector for previous entries button/link to crawl older pages recursively | disabled |
+| `cache` | Set to `"false"` to disable temporary file cache | `true` |
+| `cacheTtlSeconds` | Override cache TTL in seconds for this request | `900` |
 | `fetchContent` | Set to `"true"` to fetch full article content | `false` |
 
 ## Examples
@@ -123,6 +125,16 @@ curl "http://localhost:3000/rss?url=https://example.com/blog&fetchContent=true&c
 ### Crawl All Previous Entries
 ```bash
 curl "http://localhost:3000/rss?url=https://example.com/blog&item=.article&title=h2&link=a&previous=.pagination .prev a"
+```
+
+### Disable Cache For One Request
+```bash
+curl "http://localhost:3000/rss?url=https://example.com/blog&previous=.pagination .prev a&cache=false"
+```
+
+### Use A Short Cache TTL
+```bash
+curl "http://localhost:3000/rss?url=https://example.com/blog&cacheTtlSeconds=120"
 ```
 
 ## API Endpoints
@@ -197,6 +209,16 @@ The server runs on port 3000 by default. You can override this with the `PORT` e
 
 ```bash
 PORT=8080 npm start
+```
+
+Optional cache settings:
+
+```bash
+# Disable cache globally
+CACHE_ENABLED=false npm start
+
+# Set default cache TTL to 30 minutes
+CACHE_TTL_SECONDS=1800 npm start
 ```
 
 ## Architecture
