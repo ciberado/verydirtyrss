@@ -1,0 +1,51 @@
+// For format details, see https://aka.ms/devcontainer.json.
+{
+	"name": "Node.js & TypeScript",
+
+	// Build from a Dockerfile so we can use Ubuntu 24.04 (noble) and rename
+	// the default user to "dev". The typescript-node image has no noble variant.
+	"build": {
+		"dockerfile": "Dockerfile",
+		"args": {
+			"USERNAME": "dev",
+			"NODE_VERSION": "24"
+		}
+	},
+
+	// Give the container a stable Docker hostname.
+	// Tailscale still uses its own --hostname flag (vs-<PROJECT_NAME>).
+	"runArgs": [
+		"--hostname", "devcontainer",
+		"--env-file", "${localWorkspaceFolder}/.devcontainer/.env",
+		"--name", "vs-${localWorkspaceFolderBasename}",
+		"--dns=100.100.100.100",
+		"--dns=1.1.1.1"
+	],
+
+	"features": {
+		"ghcr.io/devcontainers/features/github-cli:1": {},
+		"ghcr.io/devcontainers-extra/features/tailscale:1": {},
+		"ghcr.io/devcontainers/features/docker-in-docker:3.0.0": {
+			"moby": false
+		},
+		"ghcr.io/devcontainers/features/sshd:1": {}
+		// tmux is installed directly in the Dockerfile;
+		// oh-my-tmux config is applied in post-create.sh.
+	},
+
+	// Drop into the container as our renamed user.
+	"remoteUser": "dev",
+	"containerUser": "dev",
+
+	// Disable UID remapping: renaming vscode→dev in the Dockerfile
+	// can confuse older devcontainer CLI versions during the -uid
+	// image generation step. The dev user already has UID 1000
+	// which matches most host users.
+	"updateRemoteUserUID": false,
+
+	// Run once after the image is built: install oh-my-tmux and Fresh editor.
+	"postCreateCommand": "bash .devcontainer/post-create.sh",
+
+	// Start Tailscale (and OpenSSH) every time the container starts.
+	"postStartCommand": "bash .devcontainer/start-tailscale.sh"
+}
