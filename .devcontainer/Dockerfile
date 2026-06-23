@@ -25,6 +25,12 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends tmux curl \
     && rm -rf /var/lib/apt/lists/*
 
+# Install astrovim for all users
+COPY setup-astrovim.sh /tmp/setup-astrovim.sh
+RUN chmod +x /tmp/setup-astrovim.sh \
+    && /tmp/setup-astrovim.sh \
+    && rm /tmp/setup-astrovim.sh    
+
 # Install nvm + Node + global TS tooling as the target user.
 # NVM_DIR goes in the user's home so it survives container mounts correctly.
 USER ${USERNAME}
@@ -39,12 +45,6 @@ RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.5/install.sh | b
 # Keep the shell init wired up for interactive sessions.
 RUN echo '. "${NVM_DIR}/nvm.sh"' >> /home/${USERNAME}/.bashrc \
     && echo '. "${NVM_DIR}/nvm.sh"' >> /home/${USERNAME}/.zshrc 2>/dev/null || true
-
-# Install astrovim for all users
-COPY setup-astrovim.sh /tmp/setup-astrovim.sh
-RUN chmod +x /tmp/setup-astrovim.sh \
-    && /tmp/setup-astrovim.sh \
-    && rm /tmp/setup-astrovim.sh    
 
 # Wire up auto-cd to the devcontainer workspace and tmux auto-attach.
 # On any interactive shell (VS Code terminal, SSH), automatically:
