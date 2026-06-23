@@ -1,5 +1,0 @@
-# Local secrets (for testing the template locally)
-.env
-
-# Local codewhale config
-.codewhale/
