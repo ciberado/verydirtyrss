@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.4.0] - 2026-06-23
+
+### Added
+- GitHub Actions workflow to build, tag, and push Docker image to Docker Hub on push to main or version tags
+- Automated test gate before Docker build in CI pipeline
+
 ## [1.3.0] - 2026-06-23
 
 ### Added
