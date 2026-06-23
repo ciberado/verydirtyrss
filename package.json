@@ -8,7 +8,7 @@
     "build": "tsc",
     "test": "vitest run",
     "test:watch": "vitest",
-    "dev": "concurrently \"tsc --watch\" \"nodemon --watch 'src/**/*.ts' --exec 'ts-node' src/index.ts\"",
+    "dev": "concurrently \"tsc --watch\" \"nodemon --watch 'src/**/*.ts' --exec 'node --loader ts-node/esm' src/index.ts\"",
     "docker:build": "docker build -t verydirtyrss .",
     "docker:run": "docker run -p 3000:3000 verydirtyrss",
     "docker:dev": "docker run -p 3000:3000 -v $(pwd)/src:/app/src verydirtyrss",
