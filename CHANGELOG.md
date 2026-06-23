@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.5.0] - 2026-06-23
+
+### Added
+- RSS feed builder web UI at `/` — vanilla HTML/CSS/JS form for all RSS and JSON parameters
+- Content-negotiated root route: HTML interface for browsers, JSON docs for API clients
+- Playwright E2E test suite (19 tests) covering the builder UI, source toggles, feed generation, and error handling
+- test-results/ to .gitignore
+
+### Changed
+- Dockerfile now bundles public/ directory for the builder UI
+
 ## [1.4.0] - 2026-06-23
 
 ### Added
