@@ -8,6 +8,7 @@
     "build": "tsc",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:e2e": "npx playwright test",
     "dev": "concurrently \"tsc --watch\" \"nodemon --watch 'src/**/*.ts' --exec 'node --loader ts-node/esm' src/index.ts\"",
     "docker:build": "docker build -t verydirtyrss .",
     "docker:run": "docker run -p 3000:3000 verydirtyrss",
@@ -23,6 +24,7 @@
     "rss": "^1.2.2"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.0",
     "@types/express": "^4.17.21",
     "@types/node": "^20.10.6",
     "@types/rss": "^0.0.32",

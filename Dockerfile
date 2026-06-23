@@ -37,8 +37,9 @@ RUN npm ci --only=production && npm cache clean --force
 RUN addgroup -g 1001 -S nodejs
 RUN adduser -S verydirtyrss -u 1001
 
-# Copy the built application from the builder stage
+# Copy the built application and public assets from the builder stage
 COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/public ./public
 
 # Change ownership of the app directory to the nodejs user
 RUN chown -R verydirtyrss:nodejs /app

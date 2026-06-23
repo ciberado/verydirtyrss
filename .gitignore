@@ -70,6 +70,7 @@ coverage/
 # Temporary folders
 tmp/
 temp/
+test-results/
 **/.codewhale/*
 !**/.codewhale/constitution.json
 .deepseek/

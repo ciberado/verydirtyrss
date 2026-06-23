@@ -1,0 +1,912 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VeryDirtyRSS — RSS Feed Builder</title>
+<style>
+  /* ── Reset & base ──────────────────────────────────── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { font-size: 16px; -webkit-text-size-adjust: 100%; }
+
+  :root {
+    --bg: #f5f2eb;
+    --surface: #ffffff;
+    --primary: #3b5e7d;
+    --primary-hover: #2e4c66;
+    --primary-light: #e8eef5;
+    --accent: #c67b4e;
+    --accent-light: #fdf0e7;
+    --text: #1e1e2e;
+    --text-secondary: #5a5a6e;
+    --text-muted: #8e8ea0;
+    --border: #e2dcd0;
+    --border-hover: #ccc4b4;
+    --border-focus: #3b5e7d;
+    --success: #1a7a4a;
+    --success-light: #e8f5ef;
+    --error: #b91c1c;
+    --error-light: #fef2f2;
+    --radius: 10px;
+    --radius-sm: 6px;
+    --shadow: 0 1px 2px rgba(0,0,0,0.04), 0 1px 4px rgba(0,0,0,0.06);
+    --shadow-lg: 0 4px 20px rgba(0,0,0,0.08);
+    --shadow-focus: 0 0 0 3px rgba(59, 94, 125, 0.15);
+    --font: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+             'Helvetica Neue', Arial, sans-serif;
+    --mono: 'SF Mono', 'Fira Code', 'Fira Mono', 'Cascadia Code', Consolas,
+             'Liberation Mono', monospace;
+    --max-w: 820px;
+    --transition: 180ms ease;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1a1a24;
+      --surface: #24243a;
+      --primary: #6b93b8;
+      --primary-hover: #82a8cc;
+      --primary-light: #2a314a;
+      --accent: #d4966e;
+      --accent-light: #2f2420;
+      --text: #e6e4e0;
+      --text-secondary: #a6a2b0;
+      --text-muted: #73708a;
+      --border: #363648;
+      --border-hover: #4e4e66;
+      --border-focus: #6b93b8;
+      --success: #3da06a;
+      --success-light: #1f2f2a;
+      --error: #e54c4c;
+      --error-light: #2e1a1a;
+      --shadow: 0 1px 2px rgba(0,0,0,0.15), 0 1px 4px rgba(0,0,0,0.2);
+      --shadow-lg: 0 4px 24px rgba(0,0,0,0.3);
+      --shadow-focus: 0 0 0 3px rgba(107, 147, 184, 0.25);
+    }
+  }
+
+  body {
+    font-family: var(--font);
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    min-height: 100vh;
+    padding: 0 1rem 3rem;
+  }
+
+  /* ── Layout ────────────────────────────────────────── */
+  .container { max-width: var(--max-w); margin: 0 auto; }
+
+  /* ── Header ────────────────────────────────────────── */
+  header {
+    padding: 2.5rem 0 1.5rem;
+    text-align: center;
+  }
+  header h1 {
+    font-size: 1.75rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: var(--text);
+  }
+  header h1 span {
+    display: inline-block;
+    width: 12px; height: 12px;
+    background: var(--accent);
+    border-radius: 50%;
+    margin-right: 0.4rem;
+    vertical-align: middle;
+    position: relative;
+    top: -2px;
+  }
+  header p {
+    margin-top: 0.3rem;
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+  }
+
+  /* ── Card ──────────────────────────────────────────── */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.75rem 2rem;
+    box-shadow: var(--shadow);
+    margin-bottom: 1.25rem;
+    transition: border-color var(--transition), box-shadow var(--transition);
+  }
+  @media (max-width: 560px) {
+    .card { padding: 1.25rem 1rem; }
+  }
+
+  /* ── Source toggle ─────────────────────────────────── */
+  .source-toggle {
+    display: flex;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 3px;
+    gap: 3px;
+    margin-bottom: 1.25rem;
+  }
+  .source-toggle input { display: none; }
+  .source-toggle label {
+    flex: 1;
+    text-align: center;
+    padding: 0.55rem 0.75rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    border-radius: calc(var(--radius-sm) - 2px);
+    cursor: pointer;
+    color: var(--text-muted);
+    transition: all var(--transition);
+    user-select: none;
+  }
+  .source-toggle input:checked + label {
+    background: var(--surface);
+    color: var(--text);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+    font-weight: 600;
+  }
+  .source-toggle label:hover:not(:has(input:checked)) {
+    color: var(--text-secondary);
+  }
+
+  /* ── Form fields ───────────────────────────────────── */
+  .field { margin-bottom: 1rem; }
+  .field label {
+    display: block;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-bottom: 0.3rem;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+  }
+  .field-hint {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-bottom: 0.25rem;
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: normal;
+  }
+
+  input[type="text"],
+  input[type="url"],
+  input[type="number"] {
+    width: 100%;
+    padding: 0.6rem 0.75rem;
+    font-size: 0.925rem;
+    font-family: var(--font);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    color: var(--text);
+    transition: border-color var(--transition), box-shadow var(--transition);
+    outline: none;
+  }
+  input:focus {
+    border-color: var(--border-focus);
+    box-shadow: var(--shadow-focus);
+  }
+  input::placeholder { color: var(--text-muted); }
+
+  /* URL field — prominent */
+  .url-field input {
+    font-size: 1rem;
+    padding: 0.75rem 0.85rem;
+  }
+
+  /* Checkbox / toggle row */
+  .checkbox-row {
+    display: flex; align-items: center; gap: 0.6rem;
+    padding: 0.35rem 0;
+  }
+  .checkbox-row input[type="checkbox"] {
+    width: 1.1rem; height: 1.1rem;
+    accent-color: var(--primary);
+    cursor: pointer;
+  }
+  .checkbox-row label {
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--text);
+    text-transform: none;
+    letter-spacing: normal;
+  }
+
+  /* ── Selector grid ─────────────────────────────────── */
+  .selector-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem 1.25rem;
+  }
+  @media (max-width: 560px) {
+    .selector-grid { grid-template-columns: 1fr; }
+  }
+  .selector-grid .field-wide { grid-column: 1 / -1; }
+
+  /* ── Section headers ───────────────────────────────── */
+  .section-header {
+    font-size: 0.8125rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-muted);
+    margin-bottom: 0.85rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--border);
+  }
+
+  /* ── Collapsible details ───────────────────────────── */
+  details.collapse {
+    margin-top: 0.75rem;
+    border-top: 1px solid var(--border);
+    padding-top: 0.75rem;
+  }
+  details.collapse summary {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--text-muted);
+    cursor: pointer;
+    user-select: none;
+    padding: 0.3rem 0;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    transition: color var(--transition);
+  }
+  details.collapse summary::-webkit-details-marker { display: none; }
+  details.collapse summary:hover { color: var(--text-secondary); }
+  details.collapse summary::before {
+    content: '';
+    display: inline-block;
+    width: 0; height: 0;
+    border-left: 5px solid var(--text-muted);
+    border-top: 4px solid transparent;
+    border-bottom: 4px solid transparent;
+    transition: transform var(--transition);
+  }
+  details.collapse[open] summary::before {
+    transform: rotate(90deg);
+  }
+  details.collapse > div {
+    padding-top: 0.85rem;
+  }
+
+  /* ── Generate button ───────────────────────────────── */
+  .actions {
+    margin-top: 0.5rem;
+  }
+  .btn-primary {
+    display: block;
+    width: 100%;
+    padding: 0.85rem 1.5rem;
+    font-size: 1rem;
+    font-weight: 600;
+    font-family: var(--font);
+    color: #fff;
+    background: var(--primary);
+    border: none;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: background var(--transition), transform var(--transition),
+                box-shadow var(--transition);
+  }
+  .btn-primary:hover {
+    background: var(--primary-hover);
+    box-shadow: var(--shadow-lg);
+  }
+  .btn-primary:active {
+    transform: scale(0.985);
+  }
+  .btn-primary:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+  }
+  .btn-primary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  /* ── Loading spinner ───────────────────────────────── */
+  .spinner {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin-top: 0.75rem;
+    font-size: 0.9rem;
+    color: var(--text-muted);
+  }
+  .spinner .ring {
+    width: 1.1rem; height: 1.1rem;
+    border: 2px solid var(--border);
+    border-top-color: var(--primary);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Result section ────────────────────────────────── */
+  .result-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  .result-header h2 {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text);
+  }
+  .result-header .badge {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 0.2rem 0.5rem;
+    border-radius: 3px;
+    background: var(--success-light);
+    color: var(--success);
+  }
+  .result-header .badge.error {
+    background: var(--error-light);
+    color: var(--error);
+  }
+
+  .result-url {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 0.55rem 0.75rem;
+    margin-bottom: 1rem;
+    word-break: break-all;
+  }
+  .result-url a {
+    flex: 1;
+    font-size: 0.85rem;
+    font-family: var(--mono);
+    color: var(--primary);
+    text-decoration: none;
+    min-width: 0;
+  }
+  .result-url a:hover { text-decoration: underline; }
+  .btn-copy {
+    flex-shrink: 0;
+    padding: 0.35rem 0.7rem;
+    font-size: 0.8rem;
+    font-weight: 500;
+    font-family: var(--font);
+    color: var(--text-secondary);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all var(--transition);
+  }
+  .btn-copy:hover {
+    border-color: var(--border-hover);
+    color: var(--text);
+  }
+  .btn-copy.copied {
+    border-color: var(--success);
+    color: var(--success);
+  }
+  .btn-open {
+    flex-shrink: 0;
+    padding: 0.35rem 0.7rem;
+    font-size: 0.8rem;
+    font-weight: 500;
+    font-family: var(--font);
+    color: #fff;
+    background: var(--primary);
+    border: none;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    text-decoration: none;
+    white-space: nowrap;
+    transition: background var(--transition);
+  }
+  .btn-open:hover { background: var(--primary-hover); }
+
+  .rss-preview {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 1rem;
+    overflow-x: auto;
+    max-height: 400px;
+    overflow-y: auto;
+  }
+  .rss-preview pre {
+    font-family: var(--mono);
+    font-size: 0.8rem;
+    line-height: 1.55;
+    color: var(--text);
+    white-space: pre;
+    word-spacing: normal;
+    tab-size: 2;
+  }
+  .rss-preview .placeholder {
+    color: var(--text-muted);
+    font-family: var(--font);
+    font-size: 0.9rem;
+    font-style: italic;
+  }
+
+  /* ── Error message ─────────────────────────────────── */
+  .error-message {
+    background: var(--error-light);
+    border: 1px solid var(--error);
+    border-radius: var(--radius-sm);
+    padding: 0.75rem 1rem;
+    color: var(--error);
+    font-size: 0.9rem;
+    margin-bottom: 1rem;
+    word-break: break-word;
+  }
+
+  /* ── Utility ───────────────────────────────────────── */
+  .hidden { display: none !important; }
+  .mt-1 { margin-top: 1rem; }
+
+  /* ── Footer ────────────────────────────────────────── */
+  footer {
+    text-align: center;
+    margin-top: 2.5rem;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+  }
+  footer a {
+    color: var(--text-muted);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  footer a:hover { color: var(--text-secondary); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="container">
+    <h1><span></span>VeryDirtyRSS</h1>
+    <p>Turn any HTML page or JSON API into an RSS feed</p>
+  </div>
+</header>
+
+<main class="container">
+
+  <!-- ── Source & URL ── -->
+  <div class="card">
+    <div class="source-toggle" role="radiogroup" aria-label="Source type">
+      <input type="radio" name="source" id="sourceHtml" value="html" checked>
+      <label for="sourceHtml">HTML Page</label>
+      <input type="radio" name="source" id="sourceJson" value="json">
+      <label for="sourceJson">JSON API</label>
+    </div>
+
+    <div class="field url-field">
+      <label for="url">Target URL</label>
+      <input type="url" id="url" name="url"
+             placeholder="https://example.com/blog"
+             autocomplete="url" spellcheck="false">
+    </div>
+  </div>
+
+  <!-- ── Selectors ── -->
+  <div class="card">
+    <div class="section-header">Selectors</div>
+
+    <div class="selector-grid">
+      <div class="field">
+        <label for="item">Item <span class="field-hint" data-field="items">CSS selector for items</span></label>
+        <input type="text" id="item" name="item" placeholder=".post" spellcheck="false">
+      </div>
+      <div class="field">
+        <label for="title">Title <span class="field-hint" data-field="titles">CSS selector for titles</span></label>
+        <input type="text" id="title" name="title" placeholder=".post-title" spellcheck="false">
+      </div>
+      <div class="field">
+        <label for="description">Description <span class="field-hint" data-field="descriptions">CSS selector for descriptions</span></label>
+        <input type="text" id="description" name="description" placeholder=".paragraph-intro" spellcheck="false">
+      </div>
+      <div class="field">
+        <label for="link">Link <span class="field-hint" data-field="links">CSS selector for links</span></label>
+        <input type="text" id="link" name="link" placeholder=".post-link" spellcheck="false">
+      </div>
+    </div>
+
+    <details class="collapse">
+      <summary>More selectors</summary>
+      <div>
+        <div class="selector-grid">
+          <div class="field">
+            <label for="pubDate">Pub Date <span class="field-hint" data-field="pub dates">CSS selector for dates</span></label>
+            <input type="text" id="pubDate" name="pubDate" placeholder=".publish-date time" spellcheck="false">
+          </div>
+          <div class="field">
+            <label for="image">Image <span class="field-hint" data-field="images">CSS selector for images</span></label>
+            <input type="text" id="image" name="image" placeholder=".featured-image" spellcheck="false">
+          </div>
+          <div class="field">
+            <label for="modified">Modified <span class="field-hint" data-field="modified dates">CSS selector for modified dates</span></label>
+            <input type="text" id="modified" name="modified" placeholder=".modified-date time" spellcheck="false">
+          </div>
+          <div class="field">
+            <label for="content">Content <span class="field-hint" data-field="full content">CSS selector for full content</span></label>
+            <input type="text" id="content" name="content" placeholder=".post-content" spellcheck="false">
+          </div>
+          <div class="field">
+            <label for="creator">Creator <span class="field-hint" data-field="authors">CSS selector for authors</span></label>
+            <input type="text" id="creator" name="creator" placeholder=".author-date a" spellcheck="false">
+          </div>
+          <div class="field" id="previousField">
+            <label for="previous">Previous <span class="field-hint" data-field="previous page">CSS selector for prev-page link</span></label>
+            <input type="text" id="previous" name="previous" placeholder=".pagination .prev a" spellcheck="false">
+          </div>
+        </div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Options ── -->
+  <div class="card">
+    <details class="collapse" open>
+      <summary>Options</summary>
+      <div>
+        <div class="selector-grid">
+          <div class="field">
+            <label for="feedTitle">Feed title override</label>
+            <input type="text" id="feedTitle" name="feedTitle" placeholder="Auto-detected" spellcheck="false">
+          </div>
+          <div class="field">
+            <label for="feedDescription">Feed description override</label>
+            <input type="text" id="feedDescription" name="feedDescription" placeholder="Auto-detected" spellcheck="false">
+          </div>
+          <div class="field">
+            <label for="cacheTtl">Cache TTL (seconds)</label>
+            <input type="number" id="cacheTtl" name="cacheTtlSeconds" placeholder="900" min="0" max="86400">
+          </div>
+          <div>
+            <div class="checkbox-row">
+              <input type="checkbox" id="fetchContent" name="fetchContent">
+              <label for="fetchContent">Fetch full article content</label>
+            </div>
+            <div class="checkbox-row">
+              <input type="checkbox" id="cache" name="cache" checked>
+              <label for="cache">Enable cache</label>
+            </div>
+          </div>
+        </div>
+      </div>
+    </details>
+  </div>
+
+  <!-- ── Actions ── -->
+  <div class="actions">
+    <button class="btn-primary" id="generateBtn">🚀 Generate RSS Feed</button>
+    <div class="spinner hidden" id="spinner">
+      <div class="ring"></div>
+      <span>Fetching and generating feed…</span>
+    </div>
+  </div>
+
+  <!-- ── Result ── -->
+  <div class="card hidden" id="resultSection">
+    <div class="result-header">
+      <h2>Your RSS Feed</h2>
+      <span class="badge" id="statusBadge">Generated</span>
+    </div>
+
+    <div class="error-message hidden" id="errorMessage"></div>
+
+    <div class="result-url">
+      <a id="feedUrl" href="#" target="_blank" rel="noopener"></a>
+      <button class="btn-copy" id="copyBtn">Copy URL</button>
+      <a class="btn-open" id="openBtn" href="#" target="_blank" rel="noopener">Open</a>
+    </div>
+
+    <div class="rss-preview">
+      <pre id="rssPreview"><span class="placeholder">Click "Generate RSS Feed" to see the XML preview…</span></pre>
+    </div>
+  </div>
+
+</main>
+
+<footer>
+  <div class="container">
+    <p><a href="https://github.com/ciberado/verydirtyrss" target="_blank" rel="noopener">VeryDirtyRSS</a></p>
+  </div>
+</footer>
+
+<script>
+(function() {
+  'use strict';
+
+  const DOM = {
+    sourceHtml: document.getElementById('sourceHtml'),
+    sourceJson: document.getElementById('sourceJson'),
+    url:        document.getElementById('url'),
+    fields: {
+      item:        document.getElementById('item'),
+      title:       document.getElementById('title'),
+      description: document.getElementById('description'),
+      link:        document.getElementById('link'),
+      pubDate:     document.getElementById('pubDate'),
+      image:       document.getElementById('image'),
+      modified:    document.getElementById('modified'),
+      content:     document.getElementById('content'),
+      creator:     document.getElementById('creator'),
+      previous:    document.getElementById('previous'),
+    },
+    previousField: document.getElementById('previousField'),
+    feedTitle:       document.getElementById('feedTitle'),
+    feedDescription: document.getElementById('feedDescription'),
+    cacheTtl:        document.getElementById('cacheTtl'),
+    fetchContent:    document.getElementById('fetchContent'),
+    cache:           document.getElementById('cache'),
+    generateBtn:     document.getElementById('generateBtn'),
+    spinner:         document.getElementById('spinner'),
+    resultSection:   document.getElementById('resultSection'),
+    statusBadge:     document.getElementById('statusBadge'),
+    errorMessage:    document.getElementById('errorMessage'),
+    feedUrl:         document.getElementById('feedUrl'),
+    rssPreview:      document.getElementById('rssPreview'),
+    copyBtn:         document.getElementById('copyBtn'),
+    openBtn:         document.getElementById('openBtn'),
+  };
+
+  const HINTS = {
+    html: {
+      item:        'CSS selector for items',
+      title:       'CSS selector for titles',
+      description: 'CSS selector for descriptions',
+      link:        'CSS selector for links',
+      pubDate:     'CSS selector for pub dates',
+      image:       'CSS selector for images',
+      modified:    'CSS selector for modified dates',
+      content:     'CSS selector for full content',
+      creator:     'CSS selector for authors',
+      previous:    'CSS selector for prev-page link',
+    },
+    json: {
+      item:        'JSON path to items array',
+      title:       'JSON path to title field',
+      description: 'JSON path to description field',
+      link:        'JSON path to URL field',
+      pubDate:     'JSON path to date field',
+      image:       'JSON path to image field',
+      modified:    'JSON path to modified field',
+      content:     'JSON path to content field',
+      creator:     'JSON path to author field',
+    },
+  };
+
+  const PLACEHOLDERS = {
+    html: {
+      item:        '.post',
+      title:       '.post-title',
+      description: '.paragraph-intro',
+      link:        '.post-link',
+      pubDate:     '.publish-date time',
+      image:       '.featured-image',
+      modified:    '.modified-date time',
+      content:     '.post-content',
+      creator:     '.author-date a',
+      previous:    '.pagination .prev a',
+    },
+    json: {
+      item:        'data',
+      title:       'title',
+      description: 'description',
+      link:        'url',
+      pubDate:     'pubDate',
+      image:       'image',
+      modified:    'modified',
+      content:     '',
+      creator:     'author',
+    },
+  };
+
+  function getSourceType() {
+    return DOM.sourceJson.checked ? 'json' : 'html';
+  }
+
+  function setSourceType(type) {
+    if (type === 'json') {
+      DOM.sourceJson.checked = true;
+      DOM.sourceHtml.checked = false;
+    } else {
+      DOM.sourceHtml.checked = true;
+      DOM.sourceJson.checked = false;
+    }
+    updateUIForSource(type);
+  }
+
+  function updateUIForSource(type) {
+    const isJson = type === 'json';
+    const hints = isJson ? HINTS.json : HINTS.html;
+    const phs = isJson ? PLACEHOLDERS.json : PLACEHOLDERS.html;
+
+    // Show/hide previous field (HTML only)
+    DOM.previousField.style.display = isJson ? 'none' : '';
+
+    // Update field hints and placeholders
+    for (const [key, el] of Object.entries(DOM.fields)) {
+      const hintEl = el.parentElement.querySelector('.field-hint');
+      if (hintEl && hints[key]) {
+        hintEl.textContent = hints[key];
+      }
+      const newPh = phs[key];
+      if (newPh !== undefined) {
+        // Only update placeholder if the field is empty or the current value matches the old placeholder
+        el.placeholder = newPh;
+      }
+    }
+  }
+
+  // ── Source toggle listeners ──
+  DOM.sourceHtml.addEventListener('change', function() {
+    if (this.checked) updateUIForSource('html');
+  });
+  DOM.sourceJson.addEventListener('change', function() {
+    if (this.checked) updateUIForSource('json');
+  });
+
+  // ── Build RSS URL ──
+  function buildRssUrl() {
+    const base = window.location.origin;
+    const params = new URLSearchParams();
+    const source = getSourceType();
+
+    const url = DOM.url.value.trim();
+    if (url) params.set('url', url);
+
+    if (source === 'json') params.set('source', 'json');
+
+    const selectorKeys = ['item','title','description','link','pubDate','image','modified','content','creator'];
+    if (source === 'html') selectorKeys.push('previous');
+
+    for (const key of selectorKeys) {
+      const el = DOM.fields[key];
+      if (el && el.value.trim()) {
+        params.set(key, el.value.trim());
+      }
+    }
+
+    // Options
+    if (DOM.feedTitle.value.trim())       params.set('feedTitle', DOM.feedTitle.value.trim());
+    if (DOM.feedDescription.value.trim()) params.set('feedDescription', DOM.feedDescription.value.trim());
+    if (DOM.fetchContent.checked)          params.set('fetchContent', 'true');
+    if (!DOM.cache.checked)                params.set('cache', 'false');
+    if (DOM.cacheTtl.value.trim())         params.set('cacheTtlSeconds', DOM.cacheTtl.value.trim());
+
+    return base + '/rss?' + params.toString();
+  }
+
+  // ── Format RSS XML for display ──
+  function formatRssXml(xml) {
+    // Simple indentation for readability
+    let formatted = '';
+    let indent = 0;
+    const lines = xml.split(/(?=<)/);
+    for (const line of lines) {
+      if (line.startsWith('</')) indent--;
+      if (indent > 0) formatted += '  '.repeat(indent);
+      formatted += line + '\n';
+      if (line.startsWith('<') && !line.startsWith('</') && !line.endsWith('/>') && !line.includes('</')) indent++;
+    }
+    return formatted.trim();
+  }
+
+  // ── Generate ──
+  async function generateFeed() {
+    const url = buildRssUrl();
+
+    DOM.errorMessage.classList.add('hidden');
+    DOM.resultSection.classList.add('hidden');
+    DOM.spinner.classList.remove('hidden');
+    DOM.generateBtn.disabled = true;
+
+    // Show intermediate state
+    DOM.feedUrl.textContent = url;
+    DOM.feedUrl.href = url;
+    DOM.openBtn.href = url;
+    DOM.rssPreview.innerHTML = '<span class="placeholder">Fetching…</span>';
+
+    try {
+      const response = await fetch(url);
+
+      // Try to get the response text (works for both XML and JSON errors)
+      const text = await response.text();
+
+      if (!response.ok) {
+        // Try to parse as JSON for a better error message
+        let message = `Server returned ${response.status}`;
+        try {
+          const err = JSON.parse(text);
+          message = err.message || message;
+        } catch {
+          // Use raw text if it's not JSON
+          if (text.length < 500) message = text;
+        }
+        throw new Error(message);
+      }
+
+      DOM.rssPreview.textContent = formatRssXml(text);
+      DOM.statusBadge.textContent = 'Generated';
+      DOM.statusBadge.className = 'badge';
+      DOM.resultSection.classList.remove('hidden');
+
+    } catch (err) {
+      DOM.rssPreview.innerHTML = '<span class="placeholder">Generation failed.</span>';
+      DOM.errorMessage.textContent = err.message;
+      DOM.errorMessage.classList.remove('hidden');
+      DOM.statusBadge.textContent = 'Error';
+      DOM.statusBadge.className = 'badge error';
+      DOM.resultSection.classList.remove('hidden');
+    } finally {
+      DOM.spinner.classList.add('hidden');
+      DOM.generateBtn.disabled = false;
+    }
+  }
+
+  // ── Copy URL ──
+  async function copyUrl() {
+    try {
+      await navigator.clipboard.writeText(DOM.feedUrl.href);
+    } catch {
+      // Fallback for older browsers or non-secure contexts
+      const ta = document.createElement('textarea');
+      ta.value = DOM.feedUrl.href;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+    }
+    DOM.copyBtn.textContent = 'Copied!';
+    DOM.copyBtn.classList.add('copied');
+    setTimeout(() => {
+      DOM.copyBtn.textContent = 'Copy URL';
+      DOM.copyBtn.classList.remove('copied');
+    }, 2000);
+  }
+
+  // ── Event wiring ──
+  DOM.generateBtn.addEventListener('click', generateFeed);
+
+  DOM.copyBtn.addEventListener('click', copyUrl);
+
+  // Enter key on URL input triggers generate
+  DOM.url.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      generateFeed();
+    }
+  });
+
+  // ── Initialize ──
+  setSourceType('html');
+
+  // If URL param is provided via query string, pre-fill it
+  const urlParam = new URLSearchParams(window.location.search).get('url');
+  if (urlParam) {
+    DOM.url.value = urlParam;
+  }
+
+})();
+</script>
+</body>
+</html>

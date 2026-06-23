@@ -1,7 +1,13 @@
 import express from 'express';
+import path from 'path';
 import axios from 'axios';
+import { fileURLToPath } from 'url';
 import { FileCache } from './cache.js';
 import { generateRssXml, generateRssXmlFromJson, type FeedGenerationParams } from './rss.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const publicDir = path.join(__dirname, '..', 'public');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -149,38 +155,52 @@ app.get('/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// Documentation endpoint
-app.get('/', (_req, res) => {
+// Documentation endpoint / builder UI
+app.get('/', (req, res) => {
+  // Serve the HTML builder interface to browsers (only when text/html is explicitly accepted)
+  const accept = req.headers.accept || '';
+  if (accept.includes('text/html')) {
+    return res.sendFile(path.join(publicDir, 'index.html'));
+  }
+  // Serve JSON documentation to API clients
   res.json({
     name: 'VeryDirtyRSS',
-    description: 'Transform any HTML page into an RSS feed',
-    version: '1.1.0',
+    description: 'Transform any HTML page or JSON API into an RSS feed',
+    version: '1.4.0',
     endpoints: {
+      '/': {
+        method: 'GET',
+        description: 'HTML builder interface (browsers) or this JSON document (API clients)',
+      },
       '/rss': {
         method: 'GET',
-        description: 'Generate RSS feed from HTML page',
+        description: 'Generate RSS feed from an HTML page (CSS selectors) or JSON API (JSON path selectors with source=json)',
         parameters: {
           url: 'Target URL to scrape (default: https://install.doctor/blog)',
-          item: 'CSS selector for post items (default: .post)',
-          title: 'CSS selector for post titles (default: .post-title)',
-          description: 'CSS selector for post descriptions (default: .paragraph-intro)',
-          link: 'CSS selector for post links (default: .post-link)',
-          pubDate: 'CSS selector for publish dates (default: .publish-date time)',
-          image: 'CSS selector for featured images (default: .featured-image)',
-          modified: 'CSS selector for modified dates (default: .modified-date time)',
-          content: 'CSS selector for full content (default: .post-content)',
-          creator: 'CSS selector for authors (default: .author-date a)',
-          previous: 'CSS selector for previous entries link/button (default: disabled)',
+          item: 'HTML: CSS selector for post items. JSON: JSON path to items array (default: .post / data)',
+          title: 'HTML: CSS selector for post titles. JSON: JSON path to title field (default: .post-title / title)',
+          description: 'HTML: CSS selector for post descriptions. JSON: JSON path to description field (default: .paragraph-intro / description)',
+          link: 'HTML: CSS selector for post links. JSON: JSON path to URL field (default: .post-link / url)',
+          pubDate: 'HTML: CSS selector for publish dates. JSON: JSON path to date field (default: .publish-date time / pubDate)',
+          image: 'HTML: CSS selector for featured images. JSON: JSON path to image URL field (default: .featured-image / image)',
+          modified: 'HTML: CSS selector for modified dates. JSON: JSON path to modified date field (default: .modified-date time / modified)',
+          content: 'HTML: CSS selector for full content. JSON: JSON path to content field (default: .post-content / empty)',
+          creator: 'HTML: CSS selector for authors. JSON: JSON path to author field (default: .author-date a / author)',
+          previous: 'CSS selector for previous entries link/button to crawl older pages recursively (default: disabled)',
+          source: 'Set to "json" to treat the response as JSON and interpret selectors as JSON paths (default: "html")',
+          feedTitle: 'Override the RSS feed title (default: auto-detected from page title or JSON root title field)',
+          feedDescription: 'Override the RSS feed description (default: auto-detected)',
           cache: 'Set to "false" to disable temporary file cache (default: true)',
-          source: 'Set to "json" to treat the response as JSON and interpret selectors as JSON paths instead of CSS selectors (default: "html")',
-          feedTitle: 'Override the RSS feed title (default: auto-detected from page title or JSON root "title" field)',
-          feedDescription: 'Override the RSS feed description (default: auto-detected from meta description or JSON root "description" field)',
           cacheTtlSeconds: 'Override cache TTL in seconds for this request (default: env CACHE_TTL_SECONDS or 900)',
-          fetchContent: 'Set to "true" to fetch full article content (default: false)'
+          fetchContent: 'Set to "true" to fetch full article content (default: false)',
         },
         example: '/rss?url=https://example.com/blog&item=.article&title=h2&description=.excerpt&previous=.pagination .prev a',
         jsonExample: '/rss?url=https://api.example.com/activities&source=json&item=data&title=title&description=description&link=url',
-      }
+      },
+      '/health': {
+        method: 'GET',
+        description: 'Health check endpoint',
+      },
     }
   });
 });
