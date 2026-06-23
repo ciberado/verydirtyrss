@@ -102,4 +102,67 @@ describe('app endpoints', () => {
     expect(response.body.message).toBe('upstream failed');
     expect(errorSpy).toHaveBeenCalled();
   });
+
+  it('returns RSS XML from JSON source', async () => {
+    const mockJson = {
+      title: 'API Feed',
+      description: 'Activities from the API',
+      data: [
+        { id: 1, name: 'Activity 1', summary: 'First activity', url: 'https://example.com/act/1', date: '2024-01-01', author: 'Alice' },
+        { id: 2, name: 'Activity 2', summary: 'Second activity', url: 'https://example.com/act/2', date: '2024-01-02', author: 'Bob' },
+      ],
+    };
+
+    mockedAxios.get.mockResolvedValue({ data: mockJson } as never);
+
+    const response = await request(app)
+      .get('/rss')
+      .query({
+        url: 'https://api.example.com/activities',
+        source: 'json',
+        item: 'data',
+        title: 'name',
+        description: 'summary',
+        link: 'url',
+        pubDate: 'date',
+        creator: 'author',
+        cache: 'false',
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.headers['content-type']).toContain('application/rss+xml');
+    expect(response.text).toContain('<title><![CDATA[Activity 1]]></title>');
+    expect(response.text).toContain('<title><![CDATA[Activity 2]]></title>');
+    expect(response.text).toContain('<description><![CDATA[First activity]]></description>');
+    expect(response.text).toContain('<dc:creator><![CDATA[Alice]]></dc:creator>');
+    expect(response.text).toContain('<link>https://example.com/act/1</link>');
+    expect(response.text).toContain('<title><![CDATA[API Feed]]></title>'); // auto-detected from root
+  });
+
+  it('uses feedTitle query parameter override', async () => {
+    mockedAxios.get.mockResolvedValue({
+      data: {
+        title: 'Ignored API Title',
+        data: [{ name: 'Item', summary: 'Desc' }],
+      },
+    } as never);
+
+    const response = await request(app)
+      .get('/rss')
+      .query({
+        url: 'https://api.example.com/activities',
+        source: 'json',
+        item: 'data',
+        title: 'name',
+        description: 'summary',
+        feedTitle: 'My Custom RSS',
+        feedDescription: 'My custom description',
+        cache: 'false',
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.text).toContain('<title><![CDATA[My Custom RSS]]></title>');
+    expect(response.text).toContain('<description><![CDATA[My custom description]]></description>');
+    expect(response.text).not.toContain('Ignored API Title');
+  });
 });

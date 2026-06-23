@@ -5,6 +5,12 @@ import {
   extractPreviousPageUrl,
   extractText,
   generateRssXml,
+  generateRssXmlFromJson,
+  getJsonArray,
+  getJsonDate,
+  getJsonLink,
+  getJsonString,
+  resolveJsonPath,
   resolveUrl,
   type FeedGenerationParams,
 } from '../src/rss.js';
@@ -252,5 +258,253 @@ describe('generateRssXml', () => {
     expect(xml).toContain('<title><![CDATA[Site Title]]></title>');
     expect(xml).toContain('<description><![CDATA[Site Description]]></description>');
     expect(xml).toContain('<language><![CDATA[es]]></language>');
+  });
+
+  it('uses feedTitle and feedDescription overrides in HTML mode', async () => {
+    const fetchHtml = vi.fn(async () => `
+      <html><head><title>Ignored Title</title></head><body>
+        <article class="post"><h2 class="title">Post 1</h2><p class="description">Summary</p><a class="read-more" href="/p1">Read</a><time datetime="2024-01-01"></time></article>
+      </body></html>
+    `);
+
+    const xml = await generateRssXml({
+      ...baseParams,
+      feedTitle: 'HTML Override Title',
+      feedDescription: 'HTML Override Description',
+      selectors: {
+        ...baseParams.selectors,
+        previousSelector: '',
+      },
+    }, fetchHtml);
+
+    expect(xml).toContain('<title><![CDATA[HTML Override Title]]></title>');
+    expect(xml).toContain('<description><![CDATA[HTML Override Description]]></description>');
+    expect(xml).not.toContain('Ignored Title');
+  });
+});
+
+// ── JSON Helpers ───────────────────────────────────────────────
+
+describe('resolveJsonPath', () => {
+  const obj = {
+    title: 'Feed Title',
+    data: [
+      { id: 1, name: 'Item 1', info: { url: '/a' }, tags: ['x', 'y'] },
+      { id: 2, name: 'Item 2', info: { url: '/b' } },
+    ],
+    meta: { count: 2, next: '/page/2' },
+  };
+
+  it('resolves top-level fields', () => {
+    expect(resolveJsonPath(obj, 'title')).toBe('Feed Title');
+    expect(resolveJsonPath(obj, 'meta.count')).toBe(2);
+  });
+
+  it('resolves $.-prefixed paths', () => {
+    expect(resolveJsonPath(obj, '$.title')).toBe('Feed Title');
+    expect(resolveJsonPath(obj, '$.meta.count')).toBe(2);
+  });
+
+  it('resolves array indexing', () => {
+    expect(resolveJsonPath(obj, 'data[0].name')).toBe('Item 1');
+    expect(resolveJsonPath(obj, 'data[1].id')).toBe(2);
+  });
+
+  it('resolves array wildcard (returns the array)', () => {
+    const result = resolveJsonPath(obj, 'data[*].name');
+    expect(result).toBeUndefined(); // wildcard returns array, not deeper
+  });
+
+  it('returns undefined for missing fields', () => {
+    expect(resolveJsonPath(obj, 'does.not.exist')).toBeUndefined();
+    expect(resolveJsonPath(obj, '')).toBeUndefined();
+  });
+
+  it('returns undefined for null/undefined input', () => {
+    expect(resolveJsonPath(null, 'foo')).toBeUndefined();
+    expect(resolveJsonPath(undefined, 'foo')).toBeUndefined();
+  });
+});
+
+describe('getJsonArray', () => {
+  it('returns the array at the given path', () => {
+    const data = { items: [{ x: 1 }, { x: 2 }] };
+    expect(getJsonArray(data, 'items')).toEqual([{ x: 1 }, { x: 2 }]);
+  });
+
+  it('returns empty array when path does not point to an array', () => {
+    const data = { items: 'not-an-array' };
+    expect(getJsonArray(data, 'items')).toEqual([]);
+  });
+
+  it('returns empty array when path is missing', () => {
+    const data = { items: [{ x: 1 }] };
+    expect(getJsonArray(data, 'missing')).toEqual([]);
+  });
+});
+
+describe('getJsonString', () => {
+  it('returns string values', () => {
+    expect(getJsonString({ title: 'Hello' }, 'title')).toBe('Hello');
+  });
+
+  it('coerces numbers and booleans', () => {
+    expect(getJsonString({ count: 42 }, 'count')).toBe('42');
+    expect(getJsonString({ active: true }, 'active')).toBe('true');
+  });
+
+  it('returns empty string for missing selectors or undefined values', () => {
+    expect(getJsonString({ title: 'Hello' }, '')).toBe('');
+    expect(getJsonString({ title: 'Hello' }, 'missing')).toBe('');
+  });
+
+  it('returns empty string for non-coercible types (objects)', () => {
+    expect(getJsonString({ nested: { a: 1 } }, 'nested')).toBe('');
+  });
+});
+
+describe('getJsonDate', () => {
+  it('parses ISO date strings', () => {
+    const result = getJsonDate({ date: '2024-01-01T00:00:00Z' }, 'date');
+    expect(result?.toISOString()).toBe('2024-01-01T00:00:00.000Z');
+  });
+
+  it('returns null for empty or invalid selectors', () => {
+    expect(getJsonDate({ date: '2024-01-01' }, '')).toBeNull();
+    expect(getJsonDate({ date: 'not-a-date' }, 'date')).toBeNull();
+    expect(getJsonDate({ date: '2024-01-01' }, 'missing')).toBeNull();
+  });
+
+  it('coerces numeric timestamps', () => {
+    const ts = 1704067200000; // 2024-01-01T00:00:00.000Z
+    const result = getJsonDate({ ts }, 'ts');
+    expect(result?.toISOString()).toBe('2024-01-01T00:00:00.000Z');
+  });
+});
+
+describe('getJsonLink', () => {
+  it('extracts a link and resolves relative URLs', () => {
+    expect(getJsonLink({ url: '/post/1' }, 'url', 'https://example.com')).toBe('https://example.com/post/1');
+  });
+
+  it('preserves absolute URLs', () => {
+    expect(getJsonLink({ url: 'https://other.com/page' }, 'url', 'https://example.com')).toBe('https://other.com/page');
+  });
+
+  it('returns empty string for missing selector or value', () => {
+    expect(getJsonLink({ url: 'https://x.com' }, '', 'https://example.com')).toBe('');
+    expect(getJsonLink({ url: null }, 'url', 'https://example.com')).toBe('');
+  });
+});
+
+describe('generateRssXmlFromJson', () => {
+  const jsonParams: FeedGenerationParams = {
+    targetUrl: new URL('https://api.example.com/activities'),
+    siteUrl: 'https://example.com',
+    selectors: {
+      itemSelector: '', titleSelector: '', descriptionSelector: '',
+      linkSelector: '', pubDateSelector: '', imageSelector: '',
+      modifiedSelector: '', contentSelector: '', creatorSelector: '',
+      previousSelector: '',
+    },
+    fetchContent: false,
+    feedUrl: 'http://localhost:3000/rss?url=https://api.example.com/activities&source=json',
+    sourceType: 'json',
+    jsonSelectors: {
+      itemSelector: 'data',
+      titleSelector: 'name',
+      descriptionSelector: 'summary',
+      linkSelector: 'url',
+      pubDateSelector: 'date',
+      imageSelector: 'image',
+      modifiedSelector: '',
+      contentSelector: '',
+      creatorSelector: 'author',
+    },
+  };
+
+  it('parses JSON array and generates RSS items', async () => {
+    const mockJson = {
+      title: 'Activities Feed',
+      description: 'Latest activities',
+      data: [
+        { id: 1, name: 'Activity 1', summary: 'First activity', url: '/act/1', date: '2024-01-01', author: 'Alice', image: '/img/1.jpg' },
+        { id: 2, name: 'Activity 2', summary: 'Second activity', url: '/act/2', date: '2024-01-02', author: 'Bob' },
+      ],
+    };
+
+    const fetchJson = vi.fn(async () => mockJson);
+    const xml = await generateRssXmlFromJson(jsonParams, fetchJson);
+
+    expect(fetchJson).toHaveBeenCalledOnce();
+    expect(xml).toContain('<title><![CDATA[Activity 1]]></title>');
+    expect(xml).toContain('<title><![CDATA[Activity 2]]></title>');
+    expect(xml).toContain('<description><![CDATA[First activity]]></description>');
+    expect(xml).toContain('<dc:creator><![CDATA[Alice]]></dc:creator>');
+    expect(xml).toContain('<link>https://example.com/act/1</link>');
+    expect(xml).toContain('<link>https://example.com/act/2</link>');
+    expect(xml).toContain('/img/1.jpg'); // enclosure URL from image selector
+  });
+
+  it('uses feed metadata from JSON root', async () => {
+    const fetchJson = vi.fn(async () => ({
+      title: 'API Feed',
+      description: 'From the API root',
+      data: [{ name: 'Item', summary: 'Desc' }],
+    }));
+
+    const xml = await generateRssXmlFromJson(jsonParams, fetchJson);
+
+    expect(xml).toContain('<title><![CDATA[API Feed]]></title>');
+    expect(xml).toContain('<description><![CDATA[From the API root]]></description>');
+  });
+
+  it('skips items missing both title and description', async () => {
+    const fetchJson = vi.fn(async () => ({
+      data: [
+        { name: 'Visible', summary: 'Has both' },
+        { name: 'NoDesc' },       // has title, so included
+        { summary: 'NoTitle' },   // has description, so included
+        { irrelevant: 'skip' },   // no title or description → skipped
+      ],
+    }));
+
+    const xml = await generateRssXmlFromJson(jsonParams, fetchJson);
+
+    expect(xml).toContain('Visible');
+    expect(xml).toContain('NoDesc');
+    expect(xml).toContain('NoTitle');
+    expect(xml).not.toContain('irrelevant');
+  });
+
+  it('throws when jsonSelectors is missing', async () => {
+    const badParams: FeedGenerationParams = {
+      ...jsonParams,
+      jsonSelectors: undefined,
+    };
+
+    await expect(generateRssXmlFromJson(badParams, vi.fn()))
+      .rejects.toThrow('jsonSelectors are required for JSON source type');
+  });
+
+  it('throws when JSON response is null or undefined', async () => {
+    const fetchJson = vi.fn(async () => null);
+    await expect(generateRssXmlFromJson(jsonParams, fetchJson))
+      .rejects.toThrow('JSON source returned empty response');
+  });
+
+  it('uses feedTitle and feedDescription overrides when provided', async () => {
+    const fetchJson = vi.fn(async () => ({
+      data: [{ name: 'Item', summary: 'Desc' }],
+    }));
+
+    const xml = await generateRssXmlFromJson({
+      ...jsonParams,
+      feedTitle: 'My Custom Feed',
+      feedDescription: 'My custom description',
+    }, fetchJson);
+
+    expect(xml).toContain('<title><![CDATA[My Custom Feed]]></title>');
+    expect(xml).toContain('<description><![CDATA[My custom description]]></description>');
   });
 });

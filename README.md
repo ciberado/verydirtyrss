@@ -4,7 +4,7 @@
 [![TypeScript](https://img.shields.io/badge/typescript-%23007ACC.svg?style=for-the-badge&logo=typescript&logoColor=white)](https://github.com/ciberado/verydirtyrss)
 [![Node.js](https://img.shields.io/badge/node.js-6DA55F?style=for-the-badge&logo=node.js&logoColor=white)](https://github.com/ciberado/verydirtyrss)
 
-A simple web server that transforms any HTML page into an RSS feed using configurable CSS selectors.
+A simple web server that transforms any HTML page or JSON API into an RSS feed using configurable selectors.
 
 ## Features
 
@@ -15,6 +15,7 @@ A simple web server that transforms any HTML page into an RSS feed using configu
 - 🔒 **Security-focused** with non-root user in container
 - ⚡ **Optional full article content** fetching
 - 🌐 **Auto-detection** of site language and metadata
+- 🔗 **JSON API support** — use `source=json` with JSON path selectors to turn any REST API into an RSS feed
 
 ## Quick Start
 
@@ -86,21 +87,32 @@ Use custom CSS selectors to extract specific content:
 GET /rss?url=https://www.vozpopuli.com/redaccion/roger-senserrich&item=article&title=header&description=.entradilla&link=a
 ```
 
+### JSON API Source
+
+Turn any JSON API into an RSS feed by adding `&source=json`. Selectors become JSON path expressions instead of CSS selectors:
+
+```
+GET /rss?url=https://api.example.com/activities&source=json&item=items&title=title&description=summary&link=permalink
+```
+
 ### Available Parameters
 
 | Parameter | Description | Default Value |
 |-----------|-------------|---------------|
-| `url` | Target URL to scrape | `https://install.doctor/blog` |
-| `item` | CSS selector for post items | `.post` |
-| `title` | CSS selector for post titles | `.post-title` |
-| `description` | CSS selector for post descriptions | `.paragraph-intro` |
-| `link` | CSS selector for post links | `.post-link` |
-| `pubDate` | CSS selector for publish dates | `.publish-date time` |
-| `image` | CSS selector for featured images | `.featured-image` |
-| `modified` | CSS selector for modified dates | `.modified-date time` |
-| `content` | CSS selector for full content | `.post-content` |
-| `creator` | CSS selector for authors | `.author-date a` |
+| `url` | Target URL to scrape (HTML page or JSON endpoint) | `https://install.doctor/blog` |
+| `item` | HTML: CSS selector for post items. JSON: JSON path to items array | `.post` / `data` |
+| `title` | HTML: CSS selector for post titles. JSON: JSON path to title field | `.post-title` / `title` |
+| `description` | HTML: CSS selector for post descriptions. JSON: JSON path to description field | `.paragraph-intro` / `description` |
+| `link` | HTML: CSS selector for post links. JSON: JSON path to URL field | `.post-link` / `url` |
+| `pubDate` | HTML: CSS selector for publish dates. JSON: JSON path to date field | `.publish-date time` / `pubDate` |
+| `image` | HTML: CSS selector for featured images. JSON: JSON path to image URL field | `.featured-image` / `image` |
+| `modified` | HTML: CSS selector for modified dates. JSON: JSON path to modified date field | `.modified-date time` / `modified` |
+| `content` | HTML: CSS selector for full content. JSON: JSON path to content field | `.post-content` / (empty) |
+| `creator` | HTML: CSS selector for authors. JSON: JSON path to author field | `.author-date a` / `author` |
 | `previous` | CSS selector for previous entries button/link to crawl older pages recursively | disabled |
+| `source` | Set to `"json"` to treat the response as JSON and interpret selectors as JSON paths | `html` |
+| `feedTitle` | Override the RSS feed title (auto-detected from HTML `<title>` or JSON root `title` field) | auto |
+| `feedDescription` | Override the RSS feed description | auto |
 | `cache` | Set to `"false"` to disable temporary file cache | `true` |
 | `cacheTtlSeconds` | Override cache TTL in seconds for this request | `900` |
 | `fetchContent` | Set to `"true"` to fetch full article content | `false` |
@@ -137,10 +149,33 @@ curl "http://localhost:3000/rss?url=https://example.com/blog&previous=.paginatio
 curl "http://localhost:3000/rss?url=https://example.com/blog&cacheTtlSeconds=120"
 ```
 
+### JSON API to RSS (Real Example)
+```bash
+curl "http://localhost:3000/rss?url=https://www.barcelona.cat/capitalmundialarquitectura/es/api/activities?page=1&limit=5&source=json&item=items&title=title&description=summary&link=permalink&image=image&creator=organitzadors_text"
+```
+
+### JSON API with Custom Feed Title
+```bash
+curl "http://localhost:3000/rss?url=https://api.example.com/activities&source=json&item=items&title=title&description=summary&link=permalink&feedTitle=My%20Activities&feedDescription=Activity%20feed"
+```
+
+## JSON Path Reference
+
+When using `source=json`, selectors are interpreted as simple JSON path expressions, not CSS selectors.
+
+| Pattern | Example | Description |
+|---------|---------|-------------|
+| `.` dot notation | `items.title` | Access nested fields |
+| `$.` prefix | `$.data.name` | Optional root prefix (ignored) |
+| `[*]` wildcard | `items[*]` | Select array (use for the `item` parameter) |
+| `[n]` index | `items[0].name` | Access array by numeric index |
+
+The path syntax works for the `item` parameter (selects the items array from the JSON root) and for field selectors like `title`, `description`, `link`, etc. (extract values from each item).
+
 ## API Endpoints
 
 ### `GET /rss`
-Generate RSS feed from HTML page with configurable selectors.
+Generate RSS feed from an HTML page (CSS selectors) or JSON API (JSON path selectors with `source=json`).
 
 ### `GET /health`
 Health check endpoint for monitoring.
@@ -225,9 +260,10 @@ CACHE_TTL_SECONDS=1800 npm start
 
 - **Express.js** - Web server framework
 - **Cheerio** - Server-side jQuery for HTML parsing
-- **Axios** - HTTP client for fetching web pages
+- **Axios** - HTTP client for fetching web pages and JSON APIs
 - **RSS** - RSS feed generation library
 - **TypeScript** - Type safety and better development experience
+- **JSON Path resolution** — Built-in dot/bracket notation resolver for JSON API support
 
 ## Security Features
 

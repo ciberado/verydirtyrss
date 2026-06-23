@@ -1,7 +1,7 @@
 import express from 'express';
 import axios from 'axios';
 import { FileCache } from './cache.js';
-import { generateRssXml, type FeedGenerationParams } from './rss.js';
+import { generateRssXml, generateRssXmlFromJson, type FeedGenerationParams } from './rss.js';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -34,6 +34,27 @@ function createFetchHtmlWithCache(cache: FileCache) {
   };
 }
 
+function createFetchJsonWithCache(cache: FileCache) {
+  return async (url: string, timeoutMs: number): Promise<unknown> => {
+  const cacheKey = `JSON:GET:${url}`;
+  const cached = await cache.get(cacheKey);
+  if (cached !== null) {
+    return JSON.parse(cached);
+  }
+
+  const response = await axios.get(url, {
+    headers: {
+      'User-Agent': USER_AGENT,
+    },
+    timeout: timeoutMs,
+  });
+
+  const json = response.data;
+  await cache.set(cacheKey, JSON.stringify(json));
+  return json;
+  };
+}
+
 // Main RSS generation endpoint
 app.get('/rss', async (req, res) => {
   try {
@@ -54,6 +75,9 @@ app.get('/rss', async (req, res) => {
     const previousSelector = searchParams.previous as string || '';
     const cacheEnabled = (searchParams.cache as string || 'true') !== 'false';
     const cacheTtlSeconds = Number(searchParams.cacheTtlSeconds as string || defaultCacheTtlSeconds);
+    const sourceType = (searchParams.source as string || 'html') as 'html' | 'json';
+    const feedTitle = searchParams.feedTitle as string || undefined;
+    const feedDescription = searchParams.feedDescription as string || undefined;
     const cache = new FileCache({
       ttlMs: Number.isFinite(cacheTtlSeconds) && cacheTtlSeconds > 0 ? cacheTtlSeconds * 1000 : defaultCacheTtlMs,
       enabled: defaultCacheEnabled && cacheEnabled,
@@ -76,13 +100,40 @@ app.get('/rss', async (req, res) => {
       },
       fetchContent: searchParams.fetchContent === 'true',
       feedUrl: `${req.protocol}://${req.get('host')}${req.originalUrl}`,
+      feedTitle,
+      feedDescription,
     };
 
-    const xml = await generateRssXml(generationParams, fetchHtmlWithCache);
-    
-    // Return RSS XML
-    res.set('Content-Type', 'application/rss+xml; charset=utf-8');
-    res.send(xml);
+    if (sourceType === 'json') {
+      const jsonSelectors = {
+        itemSelector: searchParams.item as string || 'data',
+        titleSelector: searchParams.title as string || 'title',
+        descriptionSelector: searchParams.description as string || 'description',
+        linkSelector: searchParams.link as string || 'url',
+        pubDateSelector: searchParams.pubDate as string || 'pubDate',
+        imageSelector: searchParams.image as string || 'image',
+        modifiedSelector: searchParams.modified as string || 'modified',
+        contentSelector: searchParams.content as string || '',
+        creatorSelector: searchParams.creator as string || 'author',
+      };
+
+      const fetchJsonWithCache = createFetchJsonWithCache(cache);
+
+      const xml = await generateRssXmlFromJson({
+        ...generationParams,
+        sourceType: 'json',
+        jsonSelectors,
+      }, fetchJsonWithCache);
+
+      res.set('Content-Type', 'application/rss+xml; charset=utf-8');
+      res.send(xml);
+    } else {
+      const xml = await generateRssXml(generationParams, fetchHtmlWithCache);
+      
+      // Return RSS XML
+      res.set('Content-Type', 'application/rss+xml; charset=utf-8');
+      res.send(xml);
+    }
     
   } catch (error) {
     console.error('Error generating RSS feed:', error);
@@ -121,10 +172,14 @@ app.get('/', (_req, res) => {
           creator: 'CSS selector for authors (default: .author-date a)',
           previous: 'CSS selector for previous entries link/button (default: disabled)',
           cache: 'Set to "false" to disable temporary file cache (default: true)',
+          source: 'Set to "json" to treat the response as JSON and interpret selectors as JSON paths instead of CSS selectors (default: "html")',
+          feedTitle: 'Override the RSS feed title (default: auto-detected from page title or JSON root "title" field)',
+          feedDescription: 'Override the RSS feed description (default: auto-detected from meta description or JSON root "description" field)',
           cacheTtlSeconds: 'Override cache TTL in seconds for this request (default: env CACHE_TTL_SECONDS or 900)',
           fetchContent: 'Set to "true" to fetch full article content (default: false)'
         },
-        example: '/rss?url=https://example.com/blog&item=.article&title=h2&description=.excerpt&previous=.pagination .prev a'
+        example: '/rss?url=https://example.com/blog&item=.article&title=h2&description=.excerpt&previous=.pagination .prev a',
+        jsonExample: '/rss?url=https://api.example.com/activities&source=json&item=data&title=title&description=description&link=url',
       }
     }
   });
