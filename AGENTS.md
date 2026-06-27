@@ -124,6 +124,8 @@ When `previousSelector` is set, `generateRssXml` loops: fetches current page, ex
 6. **The `rss` npm package is used for XML generation** — not a manual XML builder. Feed items are added via `feed.item({...})` and serialized via `feed.xml({ indent: true })`.
 7. **No Prisma, no database, no queue.** This is a stateless HTTP-to-RSS proxy. State is only the disk cache.
 8. **No `package-lock.json` in .gitignore** — it's committed. Run `npm ci` in CI/Docker for reproducible builds.
-9. **Pino logger** is used instead of `console.log`. In tests, spy on `logger` methods (`logger.warn`, `logger.error`) rather than `console`.
-10. **`fetchWithRetry`** is the single HTTP path — tests should mock `../src/fetch.js` instead of mocking `axios` directly.
-11. **Feeds integration test** at `tests/feeds.test.ts` validates selectors against live sites. Run with `--pool=forks` to avoid race conditions.
+9. **Builder UI** at `GET /` — serves an interactive HTML form to browsers, JSON docs to API clients. The form builds RSS URLs with all parameters.
+10. **Full content** requires `fetchContent=true` plus either a `content` CSS selector or `readability=true`. Readability uses `@mozilla/readability` to strip navigation/ads and returns clean article HTML.
+11. **Pino logger** is used instead of `console.log`. In tests, spy on `logger` methods (`logger.warn`, `logger.error`) rather than `console`.
+12. **`fetchWithRetry`** is the single HTTP path — tests should mock `../src/fetch.js` instead of mocking `axios` directly.
+13. **Feeds integration test** at `tests/feeds.test.ts` validates selectors against live sites. Run with `--pool=forks` to avoid race conditions.

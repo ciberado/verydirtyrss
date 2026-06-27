@@ -119,6 +119,7 @@ GET /rss?url=https://api.example.com/activities&source=json&item=items&title=tit
 | `cache` | Set to `"false"` to disable temporary file cache | `true` |
 | `cacheTtlSeconds` | Override cache TTL in seconds for this request | `900` |
 | `fetchContent` | Set to `"true"` to fetch full article content | `false` |
+| `readability` | Set to `"true"` to clean article content via Mozilla Readability (strips navigation, sidebars, ads — requires `fetchContent=true`) | `false` |
 
 ## Examples
 
@@ -162,6 +163,11 @@ curl "http://localhost:3000/rss?url=https://www.barcelona.cat/capitalmundialarqu
 curl "http://localhost:3000/rss?url=https://api.example.com/activities&source=json&item=items&title=title&description=summary&link=permalink&feedTitle=My%20Activities&feedDescription=Activity%20feed"
 ```
 
+### Full-Text Article Content with Readability
+```bash
+curl "http://localhost:3000/rss?url=https://www.vozpopuli.com/redaccion/roger-senserrich&item=article&title=h2&description=div.text-inherit&link=a&fetchContent=true&readability=true"
+```
+
 ## JSON Path Reference
 
 When using `source=json`, selectors are interpreted as simple JSON path expressions, not CSS selectors.
@@ -184,7 +190,10 @@ Generate RSS feed from an HTML page (CSS selectors) or JSON API (JSON path selec
 Health check endpoint for monitoring.
 
 ### `GET /`
-API documentation and endpoint information.
+**Interactive RSS Feed Builder** (HTML UI) — served to browsers that send `Accept: text/html`.
+Provides a form where you can enter the target URL and all selector parameters, preview the
+generated RSS XML, and copy or open the feed URL. API clients receive a JSON document with
+endpoint descriptions and available parameters instead.
 
 ## Docker Commands
 
