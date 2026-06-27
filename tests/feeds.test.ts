@@ -27,6 +27,8 @@ import * as cheerio from 'cheerio';
 import axios from 'axios';
 
 import { extractText, extractLink, extractDate, resolveUrl } from '../src/rss.js';
+import { Readability } from '@mozilla/readability';
+import { JSDOM } from 'jsdom';
 
 // ── Global setup ───────────────────────────────────────────────────────
 
@@ -57,6 +59,7 @@ interface FeedEntry {
   url: string;
   selectors: FeedSelectors;
   fetchContent?: boolean;
+  readability?: boolean;
 }
 
 // ── Feed entries from the user's previous configuration ────────────────
@@ -92,6 +95,7 @@ const FEEDS: FeedEntry[] = [
       content: '.post-container',
     },
     fetchContent: true,
+    readability: true,
   },
   {
     name: 'Joana Bonet Camprubí',
@@ -379,6 +383,22 @@ function testFeed(entry: FeedEntry): void {
             expect(paragraphs).toBeGreaterThanOrEqual(1);
             // HTML should contain some inline tags (not just bare text)
             expect(contentHtml.length).toBeGreaterThan(300);
+          });
+        }
+
+        if (entry.readability) {
+          it('cleans article content with Mozilla Readability', () => {
+            const doc = new JSDOM(articleHtml, { url: articleUrl });
+            const reader = new Readability(doc.window.document);
+            const article = reader.parse();
+            expect(article).not.toBeNull();
+            // Readability should extract a clean article
+            expect(article!.content.length).toBeGreaterThan(400);
+            expect(article!.textContent.length).toBeGreaterThan(400);
+            // Should contain some paragraphs
+            expect(article!.textContent!.length).toBeGreaterThan(200);
+            // The byline should be detected for known authors
+            expect(article!.title?.length).toBeGreaterThanOrEqual(1);
           });
         }
       });

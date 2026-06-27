@@ -1,5 +1,7 @@
 import * as cheerio from 'cheerio';
 import RSS from 'rss';
+import { Readability } from '@mozilla/readability';
+import { JSDOM } from 'jsdom';
 import { logger } from './logger.js';
 
 export type FeedSelectors = {
@@ -39,6 +41,8 @@ export type FeedGenerationParams = {
   jsonSelectors?: JsonSelectors;
   feedTitle?: string;
   feedDescription?: string;
+  /** When true, use Mozilla Readability to extract clean article content. */
+  useReadability?: boolean;
 };
 
 export type FetchHtmlFn = (url: string, timeoutMs: number) => Promise<string>;
@@ -103,6 +107,7 @@ export async function generateRssXml(params: FeedGenerationParams, fetchHtml: Fe
     feedUrl,
     feedTitle: titleOverride,
     feedDescription: descOverride,
+    useReadability,
   } = params;
 
   let currentPageUrl = targetUrl.href;
@@ -158,14 +163,34 @@ export async function generateRssXml(params: FeedGenerationParams, fetchHtml: Fe
 
       let content = description;
 
-      if (link && selectors.contentSelector && fetchContent) {
+      if (link && fetchContent && (selectors.contentSelector || useReadability)) {
         try {
           const contentTimeoutMs = Number(process.env.CONTENT_TIMEOUT_MS) || 5_000;
           const articleHtml = await fetchHtml(link, contentTimeoutMs);
-          const article$ = cheerio.load(articleHtml);
-          const fullContent = article$(selectors.contentSelector).html();
-          if (fullContent) {
-            content = fullContent;
+
+          // Readability: parse the full page and extract clean HTML.
+          // Preferred when enabled — produces ad-free, readable content.
+          if (useReadability) {
+            try {
+              const doc = new JSDOM(articleHtml, { url: link });
+              const reader = new Readability(doc.window.document);
+              const article = reader.parse();
+              if (article && article.content) {
+                content = article.content;
+              }
+            } catch (readErr) {
+              logger.warn('Readability extraction failed for %s: %s', link, readErr instanceof Error ? readErr.message : String(readErr));
+            }
+          }
+
+          // CSS selector: fallback when Readability didn't produce content,
+          // or primary method when Readability is disabled.
+          if ((content === description || !useReadability) && selectors.contentSelector) {
+            const article$ = cheerio.load(articleHtml);
+            const fullContent = article$(selectors.contentSelector).html();
+            if (fullContent) {
+              content = fullContent;
+            }
           }
         } catch {
           logger.warn('Failed to fetch full content for: %s', link);
