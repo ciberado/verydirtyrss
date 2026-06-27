@@ -1,10 +1,10 @@
 import express from 'express';
 import path from 'path';
-import axios from 'axios';
 import { fileURLToPath } from 'url';
 import { FileCache } from './cache.js';
 import { generateRssXml, generateRssXmlFromJson, type FeedGenerationParams } from './rss.js';
 import { logger } from './logger.js';
+import { fetchWithRetry } from './fetch.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -35,14 +35,7 @@ function createFetchHtmlWithCache(cache: FileCache) {
     return cached;
   }
 
-  const response = await axios.get(url, {
-    headers: {
-      'User-Agent': USER_AGENT,
-    },
-    timeout: timeoutMs,
-  });
-
-  const html = String(response.data);
+  const html = await fetchWithRetry({ url, userAgent: USER_AGENT, timeoutMs });
   await cache.set(cacheKey, html);
   return html;
   };
@@ -56,14 +49,8 @@ function createFetchJsonWithCache(cache: FileCache) {
     return JSON.parse(cached);
   }
 
-  const response = await axios.get(url, {
-    headers: {
-      'User-Agent': USER_AGENT,
-    },
-    timeout: timeoutMs,
-  });
-
-  const json = response.data;
+  const raw = await fetchWithRetry({ url, userAgent: USER_AGENT, timeoutMs });
+  const json = JSON.parse(raw);
   await cache.set(cacheKey, JSON.stringify(json));
   return json;
   };

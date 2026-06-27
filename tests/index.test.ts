@@ -1,24 +1,23 @@
 import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import axios from 'axios';
 import { FileCache } from '../src/cache.js';
 import { app, createFetchHtmlWithCache } from '../src/index.js';
 import { logger } from '../src/logger.js';
 
-vi.mock('axios', () => ({
-  default: {
-    get: vi.fn(),
-  },
+vi.mock('../src/fetch.js', () => ({
+  fetchWithRetry: vi.fn(),
 }));
 
-const mockedAxios = vi.mocked(axios, true);
+import { fetchWithRetry } from '../src/fetch.js';
+
+const mockedFetch = vi.mocked(fetchWithRetry, true);
 
 describe('createFetchHtmlWithCache', () => {
   beforeEach(() => {
     vi.resetAllMocks();
   });
 
-  it('returns cached HTML without calling axios', async () => {
+  it('returns cached HTML without calling fetch', async () => {
     const cache = {
       get: vi.fn().mockResolvedValue('<html>cached</html>'),
       set: vi.fn(),
@@ -29,25 +28,24 @@ describe('createFetchHtmlWithCache', () => {
 
     expect(html).toBe('<html>cached</html>');
     expect(cache.get).toHaveBeenCalledWith('GET:https://example.com/blog');
-    expect(mockedAxios.get).not.toHaveBeenCalled();
+    expect(mockedFetch).not.toHaveBeenCalled();
   });
 
-  it('fetches with axios and stores the result on cache miss', async () => {
+  it('fetches with retry and stores the result on cache miss', async () => {
     const cache = {
       get: vi.fn().mockResolvedValue(null),
       set: vi.fn().mockResolvedValue(undefined),
     } as unknown as FileCache;
-    mockedAxios.get.mockResolvedValue({ data: '<html>fresh</html>' } as never);
+    mockedFetch.mockResolvedValue('<html>fresh</html>');
 
     const fetchHtml = createFetchHtmlWithCache(cache);
     const html = await fetchHtml('https://example.com/blog', 3210);
 
     expect(html).toBe('<html>fresh</html>');
-    expect(mockedAxios.get).toHaveBeenCalledWith('https://example.com/blog', {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      },
-      timeout: 3210,
+    expect(mockedFetch).toHaveBeenCalledWith({
+      url: 'https://example.com/blog',
+      userAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      timeoutMs: 3210,
     });
     expect(cache.set).toHaveBeenCalledWith('GET:https://example.com/blog', '<html>fresh</html>');
   });
@@ -76,13 +74,11 @@ describe('app endpoints', () => {
   });
 
   it('returns RSS XML for a successful scrape', async () => {
-    mockedAxios.get.mockResolvedValue({
-      data: `
-        <html><head><title>Blog</title></head><body>
-          <article class="post"><h2 class="post-title">Post 1</h2><p class="paragraph-intro">Summary</p><a class="post-link" href="/p1">Read</a><div class="author-date"><a>Author</a></div><div class="publish-date"><time datetime="2024-01-01"></time></div></article>
-        </body></html>
-      `,
-    } as never);
+    mockedFetch.mockResolvedValue(`
+      <html><head><title>Blog</title></head><body>
+        <article class="post"><h2 class="post-title">Post 1</h2><p class="paragraph-intro">Summary</p><a class="post-link" href="/p1">Read</a><div class="author-date"><a>Author</a></div><div class="publish-date"><time datetime="2024-01-01"></time></div></article>
+      </body></html>
+    `);
 
     const response = await request(app).get('/rss').query({ url: 'https://example.com/blog', cache: 'false' });
 
@@ -94,7 +90,7 @@ describe('app endpoints', () => {
 
   it('returns 500 JSON when scraping fails', async () => {
     const errorSpy = vi.spyOn(logger, 'error').mockImplementation(() => undefined);
-    mockedAxios.get.mockRejectedValue(new Error('upstream failed'));
+    mockedFetch.mockRejectedValue(new Error('upstream failed'));
 
     const response = await request(app).get('/rss').query({ url: 'https://example.com/blog', cache: 'false' });
 
@@ -114,7 +110,7 @@ describe('app endpoints', () => {
       ],
     };
 
-    mockedAxios.get.mockResolvedValue({ data: mockJson } as never);
+    mockedFetch.mockResolvedValue(JSON.stringify(mockJson));
 
     const response = await request(app)
       .get('/rss')
@@ -137,16 +133,16 @@ describe('app endpoints', () => {
     expect(response.text).toContain('<description><![CDATA[First activity]]></description>');
     expect(response.text).toContain('<dc:creator><![CDATA[Alice]]></dc:creator>');
     expect(response.text).toContain('<link>https://example.com/act/1</link>');
-    expect(response.text).toContain('<title><![CDATA[API Feed]]></title>'); // auto-detected from root
+    expect(response.text).toContain('<title><![CDATA[API Feed]]></title>');
   });
 
   it('uses feedTitle query parameter override', async () => {
-    mockedAxios.get.mockResolvedValue({
-      data: {
+    mockedFetch.mockResolvedValue(
+      JSON.stringify({
         title: 'Ignored API Title',
         data: [{ name: 'Item', summary: 'Desc' }],
-      },
-    } as never);
+      }),
+    );
 
     const response = await request(app)
       .get('/rss')
