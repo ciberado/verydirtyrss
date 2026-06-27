@@ -89,7 +89,9 @@ const FEEDS: FeedEntry[] = [
       title: 'h2',
       description: 'div.text-inherit',
       link: 'a',
+      content: '.post-container',
     },
+    fetchContent: true,
   },
   {
     name: 'Joana Bonet Camprubí',
@@ -324,6 +326,63 @@ function testFeed(entry: FeedEntry): void {
       }
       expect(found).toBe(true);
     });
+
+    // ── Full content fetching ───────────────────────────────────────
+    //
+    // For feeds configured with fetchContent=true and a content selector,
+    // pick the first article link, fetch the article page, and verify
+    // the content selector extracts meaningful body text.
+
+    if (entry.fetchContent && selectors.content) {
+      describe('full content extraction', () => {
+        let articleUrl: string;
+        let articleHtml: string;
+        let article$: cheerio.CheerioAPI;
+
+        beforeAll(async () => {
+          // Find the first article with both a title AND a link
+          // (mirrors generateRssXml's item filter — items without
+          // a title are skipped, so their links aren't valid article URLs).
+          const origin = new URL(url).origin;
+          for (let i = 0; i < Math.min(items.length, 10); i++) {
+            const item = items.eq(i);
+            const title = extractText(item, selectors.title);
+            const link = extractLink(item, selectors.link, origin);
+            if (title && link) {
+              articleUrl = link;
+              break;
+            }
+          }
+
+          if (articleUrl) {
+            articleHtml = await fetchHtml(articleUrl, PRODUCTION_UA);
+            article$ = cheerio.load(articleHtml);
+          }
+        }, 30_000);
+
+        it('finds an article link on the listing page', () => {
+          expect(articleUrl).toBeTruthy();
+          expect(articleUrl).toMatch(/^https?:\/\//);
+        });
+
+        if (selectors.content) {
+          it(`fetches article page and extracts content with selector "${selectors.content}"`, () => {
+            expect(articleHtml.length).toBeGreaterThan(500);
+            const contentEl = article$(selectors.content!).first();
+            const contentHtml = contentEl.html() || '';
+            const contentText = contentEl.text().trim();
+            // The content should have meaningful text — at minimum a few
+            // paragraphs (a couple hundred chars).
+            expect(contentText.length).toBeGreaterThan(200);
+            // Should contain actual article paragraphs (<p> tags)
+            const paragraphs = contentEl.find('p').length;
+            expect(paragraphs).toBeGreaterThanOrEqual(1);
+            // HTML should contain some inline tags (not just bare text)
+            expect(contentHtml.length).toBeGreaterThan(300);
+          });
+        }
+      });
+    }
 
     // ── Pagination ──────────────────────────────────────────────────
 
