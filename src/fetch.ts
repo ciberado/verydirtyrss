@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { logger } from './logger.js';
+import { httpLimiter } from './limiter.js';
 
 export type FetchOptions = {
   url: string;
@@ -28,14 +29,14 @@ export async function fetchWithRetry(options: FetchOptions): Promise<string> {
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      const response = await axios.get(url, {
+      const response = await httpLimiter.run(() => axios.get(url, {
         headers: {
           'User-Agent': userAgent,
           Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         },
         timeout: timeoutMs,
         maxRedirects: 5,
-      });
+      }));
       return String(response.data);
     } catch (err: unknown) {
       lastError = err instanceof Error ? err : new Error(String(err));
