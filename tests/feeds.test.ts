@@ -60,6 +60,8 @@ interface FeedEntry {
   selectors: FeedSelectors;
   fetchContent?: boolean;
   readability?: boolean;
+  /** Site is known to block CI IP ranges (e.g. GitHub Actions); skip in CI. */
+  ciBlocked?: boolean;
 }
 
 // ── Feed entries from the user's previous configuration ────────────────
@@ -84,6 +86,7 @@ const FEEDS: FeedEntry[] = [
     },
     fetchContent: true,
     readability: true,
+    ciBlocked: true,
   },
   {
     name: 'Roger Senserrich (4rooms)',
@@ -222,10 +225,18 @@ function testFeed(entry: FeedEntry): void {
         productionUaOk = true;
       } catch (err: unknown) {
         if (isHttpError(err)) {
-          // Retry with a standard browser UA in case the production UA
-          // is being blocked/rejected by the site
-          html = await fetchHtml(url, BROWSER_UA);
-          productionUaOk = false;
+          try {
+            // Retry with a standard browser UA in case the production UA
+            // is being blocked/rejected by the site
+            html = await fetchHtml(url, BROWSER_UA);
+            productionUaOk = false;
+          } catch {
+            // Both UAs blocked (e.g. site has IP-based blocking / WAF).
+            // Set minimal HTML so tests run and report selectors missing
+            // instead of crashing the whole describe block.
+            html = '<!doctype html><html><body></body></html>';
+            productionUaOk = false;
+          }
         } else {
           // Genuine error — re-throw so tests are skipped with a clear message
           throw err;
@@ -425,6 +436,24 @@ function testFeed(entry: FeedEntry): void {
   });
 }
 
-// ── Run tests for every feed entry ─────────────────────────────────────
+// ── CI awareness ─────────────────────────────────────────────────────────
+//
+// Some sites block GitHub Actions IP ranges (e.g. El País returns 403).
+// In CI we skip those entries since we can't validate selectors against a
+// site that refuses our connection.  Locally all entries run normally.
 
-FEEDS.forEach(testFeed);
+const isCI = process.env.GITHUB_ACTIONS === 'true';
+
+// ── Run tests for (filtered) feed entries ───────────────────────────────
+
+FEEDS
+  .filter(entry => !(isCI && entry.ciBlocked))
+  .forEach(testFeed);
+
+if (isCI) {
+  const skipped = FEEDS.filter(e => e.ciBlocked).map(e => e.name);
+  if (skipped.length > 0) {
+    // eslint-disable-next-line no-console
+    console.warn(`ℹ CI mode: skipped feed(s) blocked by CI IP ranges: ${skipped.join(', ')}`);
+  }
+}
