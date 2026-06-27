@@ -11,10 +11,11 @@
  * ── Test methodology ────────────────────────────────────────────
  *
  *   Each feed entry is tested with the production User-Agent
- *   (`VeryDirtyRSS/1.0`, hardcoded in `src/index.ts`).
+ *   (mirrors what the server sends, from `USER_AGENT` env var or
+ *   the default Chrome UA in `src/index.ts`).
  *
  *   When a site blocks that User-Agent (403), `beforeAll`
- *   automatically retries with a standard browser User-Agent so
+ *   automatically retries with a fallback browser User-Agent so
  *   the selector validation tests can still run.  A dedicated test
  *   (`"production User-Agent was not blocked"`) reports whether the
  *   production UA was rejected, so you can distinguish "UA blocked"
@@ -31,13 +32,13 @@ import { extractText, extractLink, extractDate, resolveUrl } from '../src/rss.js
 
 vi.setConfig({ testTimeout: 60_000 });
 
-/** The exact User-Agent the VeryDirtyRSS server sends (hardcoded in src/index.ts). */
+/** The default User-Agent the VeryDirtyRSS server sends (configurable via USER_AGENT env var). */
 const PRODUCTION_UA =
-  'Mozilla/5.0 (compatible; VeryDirtyRSS/1.0; +https://github.com/verydirtyrss)';
-
-/** A generic browser User-Agent used for diagnostic fallback when the production UA is blocked. */
-const BROWSER_UA =
   'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+
+/** Fallback User-Agent used for diagnostic retries when the production UA is blocked. */
+const BROWSER_UA =
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:130.0) Gecko/20100101 Firefox/130.0';
 
 interface FeedSelectors {
   item: string;

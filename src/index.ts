@@ -12,7 +12,14 @@ const publicDir = path.join(__dirname, '..', 'public');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const USER_AGENT = 'Mozilla/5.0 (compatible; VeryDirtyRSS/1.0; +https://github.com/verydirtyrss)';
+
+/**
+ * User-Agent sent with every HTTP request.
+ * Configure with `USER_AGENT` env var; defaults to a standard Chrome UA
+ * which most sites do not block (unlike the previous custom UA).
+ */
+const USER_AGENT = process.env.USER_AGENT ||
+  'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
 const defaultCacheTtlSeconds = Number(process.env.CACHE_TTL_SECONDS || '900');
 const defaultCacheTtlMs = Number.isFinite(defaultCacheTtlSeconds) && defaultCacheTtlSeconds > 0

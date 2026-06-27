@@ -45,7 +45,7 @@ describe('createFetchHtmlWithCache', () => {
     expect(html).toBe('<html>fresh</html>');
     expect(mockedAxios.get).toHaveBeenCalledWith('https://example.com/blog', {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; VeryDirtyRSS/1.0; +https://github.com/verydirtyrss)',
+        'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       },
       timeout: 3210,
     });
