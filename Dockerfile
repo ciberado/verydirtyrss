@@ -41,7 +41,11 @@ RUN adduser -S verydirtyrss -u 1001
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/public ./public
 
-# Change ownership of the app directory to the nodejs user
+# Install curl for health checks (not included in Alpine by default)
+# Must run before USER switch since apk needs root
+RUN apk add --no-cache curl
+
+# Change ownership of the app directory to the verydirtyrss user
 RUN chown -R verydirtyrss:nodejs /app
 USER verydirtyrss
 
@@ -51,9 +55,6 @@ EXPOSE 3000
 # Set environment variables
 ENV NODE_ENV=production
 ENV PORT=3000
-
-# Install curl for health checks (not included in Alpine by default)
-RUN apk add --no-cache curl
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
