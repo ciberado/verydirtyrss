@@ -1,0 +1,346 @@
+/**
+ * Integration test for all user-configured RSS feeds.
+ *
+ * Fetches real HTML from each source URL and validates that the
+ * current VeryDirtyRSS selectors extract items and fields correctly.
+ *
+ * These are live-network tests — sites can change their HTML structure,
+ * go offline, or rate-limit requests. If a feed fails, inspect whether
+ * the site changed or VeryDirtyRSS regressed.
+ *
+ * ── Test methodology ────────────────────────────────────────────
+ *
+ *   Each feed entry is tested with the production User-Agent
+ *   (`VeryDirtyRSS/1.0`, hardcoded in `src/index.ts`).
+ *
+ *   When a site blocks that User-Agent (403), `beforeAll`
+ *   automatically retries with a standard browser User-Agent so
+ *   the selector validation tests can still run.  A dedicated test
+ *   (`"production User-Agent was not blocked"`) reports whether the
+ *   production UA was rejected, so you can distinguish "UA blocked"
+ *   from "selectors are broken."
+ */
+
+import { beforeAll, describe, expect, it, vi } from 'vitest';
+import * as cheerio from 'cheerio';
+import axios from 'axios';
+
+import { extractText, extractLink, extractDate, resolveUrl } from '../src/rss.js';
+
+// ── Global setup ───────────────────────────────────────────────────────
+
+vi.setConfig({ testTimeout: 60_000 });
+
+/** The exact User-Agent the VeryDirtyRSS server sends (hardcoded in src/index.ts). */
+const PRODUCTION_UA =
+  'Mozilla/5.0 (compatible; VeryDirtyRSS/1.0; +https://github.com/verydirtyrss)';
+
+/** A generic browser User-Agent used for diagnostic fallback when the production UA is blocked. */
+const BROWSER_UA =
+  'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+
+interface FeedSelectors {
+  item: string;
+  title: string;
+  link: string;
+  description?: string;
+  pubDate?: string;
+  creator?: string;
+  image?: string;
+  previous?: string;
+  content?: string;
+}
+
+interface FeedEntry {
+  name: string;
+  url: string;
+  selectors: FeedSelectors;
+  fetchContent?: boolean;
+}
+
+// ── Feed entries from the user's previous configuration ────────────────
+//
+// Selector values are shown **decoded** (as Express / req.query delivers
+// them).  For example `link=.c_t+a` in the URL becomes `.c_t a` because
+// `+` is a space in query strings, and `h4%20a` becomes `h4 a` because
+// percent-decoding produces a space.
+
+const FEEDS: FeedEntry[] = [
+  {
+    name: 'Diego A. Manrique',
+    url: 'https://elpais.com/autor/diego-alfredo-manrique-martinez/',
+    selectors: {
+      item: 'article',
+      title: '.c_t',
+      link: '.c_t a',
+      description: '.c_d',
+      pubDate: 'time',
+      creator: '.c_a_a',
+      content: '.a_c',
+    },
+    fetchContent: true,
+  },
+  {
+    name: 'Roger Senserrich (4rooms)',
+    url: 'https://www.vozpopuli.com/redaccion/roger-senserrich',
+    selectors: {
+      item: 'article',
+      title: 'h2',
+      description: 'div.text-inherit',
+      link: 'a',
+    },
+  },
+  {
+    name: 'Joana Bonet Camprubí',
+    url: 'https://www.lavanguardia.com/autores/joana-bonet.html',
+    selectors: {
+      item: 'article',
+      title: 'h2',
+      description: '.standfirst',
+      link: 'a',
+      pubDate: 'time',
+    },
+  },
+  {
+    name: 'Jordi Évole',
+    url: 'https://www.lavanguardia.com/autores/jordi-evole.html',
+    selectors: {
+      item: 'article',
+      title: 'h2',
+      link: 'a',
+    },
+  },
+  {
+    name: 'Miquel Molina',
+    url: 'https://www.lavanguardia.com/autores/miquel-molina.html',
+    selectors: {
+      item: 'article',
+      title: 'h2',
+      link: 'a',
+    },
+  },
+  {
+    name: 'Plàcid Garcia-Planas',
+    url: 'https://www.lavanguardia.com/autores/placid-garcia-planas.html',
+    selectors: {
+      item: 'article',
+      title: 'h2',
+      description: '.standfirst',
+      link: 'a',
+      pubDate: 'time',
+    },
+  },
+  {
+    name: 'Learn | PerThirtySix',
+    url: 'https://perthirtysix.com/section/learn',
+    selectors: {
+      item: 'article',
+      title: 'h3',
+      description: 'p.text-sm.text-gray-600',
+      link: 'h3 a',
+      image: 'img',
+      creator: 'span.text-gray-900.font-medium',
+    },
+  },
+  {
+    name: "Guia de l'oci | Consorci de Turisme del Baix Llobregat",
+    url: 'https://www.turismebaixllobregat.com/ca/guia-de-loci',
+    selectors: {
+      item: 'div.node--type-leisure-activity',
+      title: 'div.field--name-node-title',
+      link: 'h4 a',
+      image: '.image-style-card',
+      description: 'div.node--type-leisure-activity',
+    },
+  },
+  {
+    name: 'maestrosdelafotografia',
+    url: 'https://maestrosdelafotografia.wordpress.com/',
+    selectors: {
+      item: 'article',
+      title: '.entry-title',
+      link: '.entry-title a',
+      previous: '.nav-previous a',
+    },
+  },
+];
+
+// ── Helpers ─────────────────────────────────────────────────────────────
+
+/** Fetch HTML with the given User-Agent. */
+async function fetchHtml(url: string, userAgent: string): Promise<string> {
+  const response = await axios.get(url, {
+    headers: {
+      'User-Agent': userAgent,
+      Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+    },
+    timeout: 20_000,
+    maxRedirects: 5,
+  });
+  return String(response.data);
+}
+
+/** Check if an error is an HTTP-level Axios error (4xx, 5xx). */
+function isHttpError(err: unknown): boolean {
+  return axios.isAxiosError(err) && err.response !== undefined && err.response.status >= 400;
+}
+
+// ── Test factory ───────────────────────────────────────────────────────
+
+/**
+ * Build a `describe` block for one feed entry.
+ *
+ * The `beforeAll` first tries the production VeryDirtyRSS User-Agent.
+ * If the site returns 403, it retries with a standard browser UA so
+ * selector validation can still proceed.  A dedicated test tells you
+ * whether the production UA was blocked.
+ */
+function testFeed(entry: FeedEntry): void {
+  const { name, url, selectors } = entry;
+
+  describe(name, () => {
+    let html: string;
+    let $: cheerio.CheerioAPI;
+    let items: cheerio.Cheerio<any>;
+    let firstItem: cheerio.Cheerio<any>;
+    let productionUaOk: boolean;
+
+    beforeAll(async () => {
+      try {
+        html = await fetchHtml(url, PRODUCTION_UA);
+        productionUaOk = true;
+      } catch (err: unknown) {
+        if (isHttpError(err)) {
+          // Retry with a standard browser UA in case the production UA
+          // is being blocked/rejected by the site
+          html = await fetchHtml(url, BROWSER_UA);
+          productionUaOk = false;
+        } else {
+          // Genuine error — re-throw so tests are skipped with a clear message
+          throw err;
+        }
+      }
+      $ = cheerio.load(html);
+      items = $(selectors.item);
+      // Find the first item that has a non-empty title, so extraction
+      // tests work even on pages where early items are nav elements
+      // (e.g. Vozpopuli's first 4 <article> are navigation menus).
+      if (items.length > 0) {
+        firstItem = items.first();
+        for (let i = 0; i < items.length; i++) {
+          const candidate = items.eq(i);
+          if (extractText(candidate, selectors.title).length > 0) {
+            firstItem = candidate;
+            break;
+          }
+        }
+      } else {
+        firstItem = $('html');
+      }
+    }, 30_000);
+
+    // ── Connectivity ────────────────────────────────────────────────
+
+    it('production User-Agent was not blocked (403)', () => {
+      expect(productionUaOk).toBe(true);
+    });
+
+    it('page loads and contains content', () => {
+      expect(html.length).toBeGreaterThan(100);
+    });
+
+    // ── Item matching ───────────────────────────────────────────────
+
+    it(`finds items with selector "${selectors.item}"`, () => {
+      expect(items.length).toBeGreaterThanOrEqual(1);
+    });
+
+    describe('first item extraction', () => {
+      let title: string;
+      let link: string;
+
+      beforeAll(() => {
+        title = extractText(firstItem, selectors.title);
+        link = extractLink(firstItem, selectors.link, new URL(url).origin);
+      });
+
+      it(`extracts title with selector "${selectors.title}"`, () => {
+        expect(title.length).toBeGreaterThanOrEqual(1);
+      });
+
+      it(`extracts link with selector "${selectors.link}"`, () => {
+        expect(link.length).toBeGreaterThanOrEqual(1);
+        expect(link).toMatch(/^https?:\/\//);
+      });
+
+      if (selectors.description) {
+        it(`extracts description with selector "${selectors.description}"`, () => {
+          const desc = extractText(firstItem, selectors.description!);
+          expect(desc).toBeDefined();
+        });
+      }
+
+      if (selectors.pubDate) {
+        it(`extracts pubDate with selector "${selectors.pubDate}"`, () => {
+          const date = extractDate(firstItem, selectors.pubDate!);
+          if (date !== null) {
+            expect(date.getTime()).not.toBeNaN();
+          }
+        });
+      }
+
+      if (selectors.creator) {
+        it(`extracts creator with selector "${selectors.creator}"`, () => {
+          const creator = extractText(firstItem, selectors.creator!);
+          expect(creator).toBeDefined();
+        });
+      }
+
+      if (selectors.image) {
+        it(`extracts image URL with selector "${selectors.image}"`, () => {
+          const image = extractLink(firstItem, selectors.image!, new URL(url).origin);
+          expect(image).toBeDefined();
+          if (image) {
+            expect(image).toMatch(/^https?:\/\//);
+          }
+        });
+      }
+    });
+
+    // ── Structural integrity ────────────────────────────────────────
+
+    it('at least one item has both title and link', () => {
+      let found = false;
+      const origin = new URL(url).origin;
+      for (let i = 0; i < Math.min(items.length, 10); i++) {
+        const item = items.eq(i);
+        const t = extractText(item, selectors.title);
+        const l = extractLink(item, selectors.link, origin);
+        if (t && l) {
+          found = true;
+          break;
+        }
+      }
+      expect(found).toBe(true);
+    });
+
+    // ── Pagination ──────────────────────────────────────────────────
+
+    if (selectors.previous) {
+      it(`finds previous-page link with selector "${selectors.previous}"`, () => {
+        const prevEl = $(selectors.previous!).first();
+        if (prevEl.length > 0) {
+          const href = prevEl.attr('href') || '';
+          if (href) {
+            const resolved = resolveUrl(href, url);
+            expect(resolved).toMatch(/^https?:\/\//);
+          }
+        }
+      });
+    }
+  });
+}
+
+// ── Run tests for every feed entry ─────────────────────────────────────
+
+FEEDS.forEach(testFeed);

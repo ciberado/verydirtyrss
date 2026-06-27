@@ -1,5 +1,6 @@
 import * as cheerio from 'cheerio';
 import RSS from 'rss';
+import { logger } from './logger.js';
 
 export type FeedSelectors = {
   itemSelector: string;
@@ -111,13 +112,13 @@ export async function generateRssXml(params: FeedGenerationParams, fetchHtml: Fe
 
   while (true) {
     if (visitedPageUrls.has(currentPageUrl)) {
-      console.warn(`Stopping pagination: already visited ${currentPageUrl}`);
+      logger.warn('Stopping pagination: already visited %s', currentPageUrl);
       break;
     }
 
     visitedPageUrls.add(currentPageUrl);
     pageNumber += 1;
-    console.log(`Fetching page ${pageNumber}: ${currentPageUrl}`);
+    logger.debug('Fetching page %d: %s', pageNumber, currentPageUrl);
 
     const html = await fetchHtml(currentPageUrl, 10000);
     const $ = cheerio.load(html);
@@ -140,7 +141,7 @@ export async function generateRssXml(params: FeedGenerationParams, fetchHtml: Fe
     }
 
     const items = $(selectors.itemSelector);
-    console.log(`Found ${items.length} items using selector: ${selectors.itemSelector} on page ${pageNumber}`);
+    logger.debug('Found %d items using selector: %s on page %d', items.length, selectors.itemSelector, pageNumber);
 
     for (let i = 0; i < items.length; i += 1) {
       const item = items.eq(i);
@@ -166,7 +167,7 @@ export async function generateRssXml(params: FeedGenerationParams, fetchHtml: Fe
             content = fullContent;
           }
         } catch {
-          console.warn(`Failed to fetch full content for: ${link}`);
+          logger.warn('Failed to fetch full content for: %s', link);
         }
       }
 
@@ -186,7 +187,7 @@ export async function generateRssXml(params: FeedGenerationParams, fetchHtml: Fe
 
     const previousPageUrl = extractPreviousPageUrl($, selectors.previousSelector, currentPageUrl);
     if (!previousPageUrl) {
-      console.log(`No previous page found with selector: ${selectors.previousSelector}`);
+      logger.debug('No previous page found with selector: %s', selectors.previousSelector);
       break;
     }
 
@@ -314,7 +315,7 @@ export async function generateRssXmlFromJson(
   }
 
   const items = getJsonArray(data, jsonSelectors.itemSelector);
-  console.log(`Found ${items.length} items using JSON selector: ${jsonSelectors.itemSelector}`);
+  logger.debug('Found %d items using JSON selector: %s', items.length, jsonSelectors.itemSelector);
 
   // Build feed metadata from the JSON root (or use explicit overrides)
   const root = (data && typeof data === 'object') ? (data as Record<string, unknown>) : {};

@@ -14,6 +14,7 @@ import {
   resolveUrl,
   type FeedGenerationParams,
 } from '../src/rss.js';
+import { logger } from '../src/logger.js';
 import * as cheerio from 'cheerio';
 
 const baseParams: FeedGenerationParams = {
@@ -206,7 +207,7 @@ describe('generateRssXml', () => {
   });
 
   it('falls back to the summary when full article fetch fails', async () => {
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => undefined);
     const params: FeedGenerationParams = {
       ...baseParams,
       fetchContent: true,
@@ -230,7 +231,7 @@ describe('generateRssXml', () => {
 
     const xml = await generateRssXml(params, fetchHtml);
 
-    expect(warnSpy).toHaveBeenCalledWith('Failed to fetch full content for: https://example.com/p1');
+    expect(warnSpy).toHaveBeenCalledWith('Failed to fetch full content for: %s', 'https://example.com/p1');
     expect(xml).toContain('<description><![CDATA[Summary]]></description>');
   });
 

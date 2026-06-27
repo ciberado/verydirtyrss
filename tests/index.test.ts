@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import axios from 'axios';
 import { FileCache } from '../src/cache.js';
 import { app, createFetchHtmlWithCache } from '../src/index.js';
+import { logger } from '../src/logger.js';
 
 vi.mock('axios', () => ({
   default: {
@@ -92,7 +93,7 @@ describe('app endpoints', () => {
   });
 
   it('returns 500 JSON when scraping fails', async () => {
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const errorSpy = vi.spyOn(logger, 'error').mockImplementation(() => undefined);
     mockedAxios.get.mockRejectedValue(new Error('upstream failed'));
 
     const response = await request(app).get('/rss').query({ url: 'https://example.com/blog', cache: 'false' });

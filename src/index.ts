@@ -4,6 +4,7 @@ import axios from 'axios';
 import { fileURLToPath } from 'url';
 import { FileCache } from './cache.js';
 import { generateRssXml, generateRssXmlFromJson, type FeedGenerationParams } from './rss.js';
+import { logger } from './logger.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -142,7 +143,7 @@ app.get('/rss', async (req, res) => {
     }
     
   } catch (error) {
-    console.error('Error generating RSS feed:', error);
+    logger.error({ err: error }, 'Error generating RSS feed');
     res.status(500).json({
       error: 'Failed to generate RSS feed',
       message: error instanceof Error ? error.message : 'Unknown error'
@@ -207,8 +208,8 @@ app.get('/', (req, res) => {
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   app.listen(PORT, () => {
-    console.log(`VeryDirtyRSS server running on port ${PORT}`);
-    console.log(`Visit http://localhost:${PORT} for documentation`);
+    logger.info(`VeryDirtyRSS server running on port ${PORT}`);
+    logger.info(`Visit http://localhost:${PORT} for documentation`);
   });
 }
 
