@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.6.2] - 2026-06-27
+
+### Fixed
+- **Docker build failure** — moved `apk add --no-cache curl` before `USER verydirtyrss` so it runs as root; previously curl install ran as non-root and failed with "Unable to open log: Permission denied"
+
+
 ## [1.6.1] - 2026-06-27
 
 ### Fixed
