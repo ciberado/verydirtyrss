@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.1] - 2026-06-27
+
+### Fixed
+- **CI docker build action** — feeds test no longer crashes when a site blocks both production and fallback User-Agents (El País returning 403 from GitHub Actions IP ranges)
+- **CI skipping for CI-blocked feeds** — El País feed entry is skipped in GitHub Actions since the site blocks CI IP ranges; runs normally locally
+- **Vitest vs Playwright conflict** — e2e tests excluded from `vitest run` via `vitest.config.ts`; they still run via `npx playwright test`
+
 ## [1.6.0] - 2026-06-27
 
 ### Added
