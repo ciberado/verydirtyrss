@@ -9,19 +9,22 @@ npm install
 # Build (TypeScript → dist/)
 npm run build          # tsc
 
-# Run all tests
+# Run all unit tests
 npm test               # vitest run
 
 # Run tests in watch mode
 npm run test:watch     # vitest
 
-# Run a single test file
+# Run a single unit test file
 npx vitest run tests/rss.test.ts
+
+# Run the live feed integration tests (validates selectors against real sites)
+npx vitest run tests/feeds.test.ts --pool=forks
 
 # Run tests matching a pattern
 npx vitest run -t "crawls previous pages"
 
-# Development server (tsc --watch + nodemon with ts-node)
+# Development server (NODE_ENV=development, debug logging with pretty-print)
 npm run dev
 
 # Start production build
@@ -41,18 +44,25 @@ src/
 │                 items via CSS selectors, builds RSS XML via the `rss` package.
 │                 Handles multi-page crawling (previous selector),
 │                 full-content fetching, metadata extraction.
-└── cache.ts      FileCache class. Disk-based key/value store with TTL.
-                  SHA-256 hashed keys as filenames in os.tmpdir().
-                  Atomic writes via temp-file + rename.
+├── cache.ts      FileCache class. Disk-based key/value store with TTL.
+│                 SHA-256 hashed keys as filenames in os.tmpdir().
+│                 Atomic writes via temp-file + rename.
+├── fetch.ts      HTTP client with retry (exponential backoff, 1s/2s + jitter,
+│                 up to 3 attempts, only retries 5xx/network errors).
+│                 Wrapped in concurrency limiter.
+├── limiter.ts    Promise-based semaphore capping concurrent outbound HTTP
+│                 requests (default 10, configurable via MAX_CONCURRENCY).
+└── logger.ts     Pino logger — debug level with pretty-print in dev,
+                  info level with JSON output in production.
 ```
 
 ### Data flow
 
 1. **GET /rss?url=...&item=...&title=...** → Express handler
-2. `createFetchHtmlWithCache(cache)` returns a fetch function that checks cache before HTTP GET (axios)
+2. `createFetchHtmlWithCache(cache)` returns a fetch function that checks cache before HTTP GET (axios with retry + concurrency limit)
 3. `generateRssXml()` loads HTML via cheerio, extracts items using CSS selectors, iterates pages via `previousSelector`
 4. For each matched item: extracts title, description, link, date, author, image URL
-5. If `fetchContent=true` and content selector is set, fetches each article's full HTML
+5. If `fetchContent=true` and content selector is set, fetches each article's full HTML (with retry and concurrency limit)
 6. Returns RSS XML (`application/rss+xml`)
 7. Cache stores raw HTML per URL with TTL
 
@@ -64,8 +74,8 @@ When `previousSelector` is set, `generateRssXml` loops: fetches current page, ex
 
 | Path | Purpose |
 |------|---------|
-| `src/` | Application source (3 files) |
-| `tests/` | Vitest test suite (3 files, mirrors src/) |
+| `src/` | Application source (6 files) |
+| `tests/` | Vitest test suite (5 files, mirrors src/) |
 | `dist/` | Compiled JS output (gitignored) |
 | `Dockerfile` | Multi-stage build: builder + production on `node:20-alpine` |
 | `docker-compose.yml` | Tailscale + app container, shares network |
@@ -79,7 +89,7 @@ When `previousSelector` is set, `generateRssXml` loops: fetches current page, ex
 - **ESM imports require `.js` extensions** even in source `.ts` files (e.g. `'./cache.js'`). This is mandated by `"module": "NodeNext"`.
 - **No separate linter** — `tsc --noEmit` or `npm run build` is the static analysis pass.
 - **Cache directory**: `$TMPDIR/verydirtyrss-cache/` by default. Override via `cacheDir` option (hardcoded; not exposed via env).
-- **Environment variables**: `PORT` (default 3000), `CACHE_TTL_SECONDS` (default 900), `CACHE_ENABLED` (default `true`).
+- **Environment variables**: `PORT` (default 3000), `CACHE_TTL_SECONDS` (default 900), `CACHE_ENABLED` (default `true`), `USER_AGENT` (default Chrome 120), `MAX_CONCURRENCY` (default 10), `CONTENT_TIMEOUT_MS` (default 5000), `LOG_LEVEL` (debug in dev, info in production).
 
 ## Coding Conventions
 
@@ -114,3 +124,6 @@ When `previousSelector` is set, `generateRssXml` loops: fetches current page, ex
 6. **The `rss` npm package is used for XML generation** — not a manual XML builder. Feed items are added via `feed.item({...})` and serialized via `feed.xml({ indent: true })`.
 7. **No Prisma, no database, no queue.** This is a stateless HTTP-to-RSS proxy. State is only the disk cache.
 8. **No `package-lock.json` in .gitignore** — it's committed. Run `npm ci` in CI/Docker for reproducible builds.
+9. **Pino logger** is used instead of `console.log`. In tests, spy on `logger` methods (`logger.warn`, `logger.error`) rather than `console`.
+10. **`fetchWithRetry`** is the single HTTP path — tests should mock `../src/fetch.js` instead of mocking `axios` directly.
+11. **Feeds integration test** at `tests/feeds.test.ts` validates selectors against live sites. Run with `--pool=forks` to avoid race conditions.

@@ -10,12 +10,15 @@ A simple web server that transforms any HTML page or JSON API into an RSS feed u
 
 - 🔄 **Transform any webpage** into a valid RSS feed
 - 🎯 **Configurable CSS selectors** for extracting content
+- 🔗 **JSON API support** — use `source=json` with JSON path selectors to turn any REST API into an RSS feed
+- ⚡ **Optional full article content** fetching
+- 🌐 **Auto-detection** of site language and metadata
 - 🚀 **Fast and lightweight** Node.js server
 - 🐳 **Docker support** with multistage builds
 - 🔒 **Security-focused** with non-root user in container
-- ⚡ **Optional full article content** fetching
-- 🌐 **Auto-detection** of site language and metadata
-- 🔗 **JSON API support** — use `source=json` with JSON path selectors to turn any REST API into an RSS feed
+- 🔁 **Automatic retry** — Exponential backoff with jitter for transient HTTP failures
+- 🚦 **Concurrency limiting** — Prevents outbound requests from overwhelming target sites
+- 📋 **Structured logging** — Pino with level control, pretty-print in development, JSON in production
 
 ## Quick Start
 
@@ -84,7 +87,7 @@ GET /rss?url=https://example.com/blog
 Use custom CSS selectors to extract specific content:
 
 ```
-GET /rss?url=https://www.vozpopuli.com/redaccion/roger-senserrich&item=article&title=header&description=.entradilla&link=a
+GET /rss?url=https://www.vozpopuli.com/redaccion/roger-senserrich&item=article&title=h2&description=div.text-inherit&link=a
 ```
 
 ### JSON API Source
@@ -121,7 +124,7 @@ GET /rss?url=https://api.example.com/activities&source=json&item=items&title=tit
 
 ### News Website (Spanish)
 ```bash
-curl "http://localhost:3000/rss?url=https://www.vozpopuli.com/redaccion/roger-senserrich&item=article&title=header&description=.entradilla&link=a"
+curl "http://localhost:3000/rss?url=https://www.vozpopuli.com/redaccion/roger-senserrich&item=article&title=h2&description=div.text-inherit&link=a"
 ```
 
 ### Blog with Custom Selectors
@@ -225,7 +228,7 @@ cd verydirtyrss
 # Install dependencies
 npm install
 
-# Start development server
+# Start development server (with pretty-printed debug logs)
 npm run dev
 ```
 
@@ -238,32 +241,85 @@ npm run build
 docker build -t verydirtyrss .
 ```
 
-## Configuration
-
-The server runs on port 3000 by default. You can override this with the `PORT` environment variable:
-
+### Running tests
 ```bash
-PORT=8080 npm start
+# Unit tests (cache, RSS generation, endpoints)
+npm test
+
+# Live feed integration tests (validate selectors against real sites)
+npx vitest run tests/feeds.test.ts --pool=forks
 ```
 
-Optional cache settings:
+## Configuration
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PORT` | `3000` | HTTP server port |
+| `NODE_ENV` | — | Set to `production` for JSON logging, `development` for pretty-printed debug output |
+| `LOG_LEVEL` | `debug` (dev) / `info` (prod) | Pino log level: `trace`, `debug`, `info`, `warn`, `error`, `fatal` |
+| `USER_AGENT` | Chrome 120 on Linux | User-Agent header sent with every outbound HTTP request |
+| `CACHE_ENABLED` | `true` | Set to `false` to disable disk cache globally |
+| `CACHE_TTL_SECONDS` | `900` (15 min) | Default cache TTL |
+| `MAX_CONCURRENCY` | `10` | Maximum concurrent outbound HTTP requests |
+| `CONTENT_TIMEOUT_MS` | `5000` | Timeout in milliseconds for `fetchContent` article fetches |
+
+### Examples
 
 ```bash
-# Disable cache globally
-CACHE_ENABLED=false npm start
+# Debug logging with verbose output
+LOG_LEVEL=debug npm start
 
-# Set default cache TTL to 30 minutes
-CACHE_TTL_SECONDS=1800 npm start
+# Custom User-Agent (some sites block the default)
+USER_AGENT="Mozilla/5.0 ... Firefox/130.0" npm start
+
+# Light concurrency for fragile sites
+MAX_CONCURRENCY=3 npm start
+
+# Combine options
+PORT=8080 CACHE_TTL_SECONDS=1800 CONTENT_TIMEOUT_MS=8000 npm start
 ```
 
 ## Architecture
 
-- **Express.js** - Web server framework
-- **Cheerio** - Server-side jQuery for HTML parsing
-- **Axios** - HTTP client for fetching web pages and JSON APIs
-- **RSS** - RSS feed generation library
-- **TypeScript** - Type safety and better development experience
-- **JSON Path resolution** — Built-in dot/bracket notation resolver for JSON API support
+```
+src/
+├── index.ts      Express app entry. Defines GET /rss, /health, /.
+│                 Creates FileCache, wires fetchHtmlWithCache(),
+│                 calls generateRssXml(). Exports app + createFetchHtmlWithCache.
+├── rss.ts        Core RSS generation. Parses HTML with cheerio, extracts
+│                 items via CSS selectors, builds RSS XML via the rss package.
+│                 Handles multi-page crawling (previous selector),
+│                 full-content fetching, metadata extraction.
+├── cache.ts      FileCache class. Disk-based key/value store with TTL.
+│                 SHA-256 hashed keys as filenames in os.tmpdir().
+│                 Atomic writes via temp-file + rename.
+├── fetch.ts      HTTP client with retry logic. Exponential backoff (1s/2s)
+│                 with jitter, only retries 5xx/network errors.
+│                 Wrapped in concurrency limiter.
+├── limiter.ts    Concurrency limiter. Promise-based semaphore that caps
+│                 how many HTTP requests are in-flight simultaneously.
+└── logger.ts     Pino logger. Debug level with pretty-print in dev;
+                  info level with JSON output in production.
+```
+
+### Data flow
+
+1. **GET /rss?url=...&item=...&title=...** → Express handler
+2. `createFetchHtmlWithCache(cache)` returns a fetch function that checks cache before HTTP GET (axios with retry + concurrency limit)
+3. If `source=json`, the JSON variant reads the response, parses JSON, and applies JSON path selectors via `generateRssXmlFromJson()`
+4. Otherwise, `generateRssXml()` loads HTML via cheerio, extracts items using CSS selectors, iterates pages via `previousSelector`
+5. For each matched item: extracts title, description, link, date, author, image URL
+6. If `fetchContent=true` and content selector is set, fetches each article's full HTML (with retry and concurrency limit)
+7. Returns RSS XML (`application/rss+xml`)
+8. Cache stores raw HTML per URL with TTL
+
+### Resilience features
+
+- **Retry**: Transient HTTP failures (timeout, 5xx, DNS errors) retry up to 3 times with exponential backoff (1s, 2s + jitter). 4xx errors are immediate.
+- **Throttling**: Outbound requests are capped to prevent overwhelming target sites and getting your IP rate-limited. Defaults to 10 concurrent.
+- **Cycle detection**: Pagination loop stops when a URL has already been visited (`visitedPageUrls` Set).
 
 ## Security Features
 
