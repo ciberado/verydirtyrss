@@ -52,6 +52,9 @@ EXPOSE 3000
 ENV NODE_ENV=production
 ENV PORT=3000
 
+# Install curl for health checks (not included in Alpine by default)
+RUN apk add --no-cache curl
+
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
   CMD curl -f http://localhost:3000/health || exit 1
