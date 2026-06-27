@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.6.0] - 2026-06-27
+
+### Added
+- **Pino structured logging** — replaces raw console.log with level-controlled, JSON-output logger; debug with pretty-print in dev, info with JSON in production
+- **Configurable User-Agent** — `USER_AGENT` env var; defaults to Chrome 120 UA which most sites do not block
+- **HTTP retry with exponential backoff** — automatic retry (1s/2s + jitter, up to 3 attempts) for 5xx and network errors
+- **Concurrency limiter** — caps outbound HTTP requests via `MAX_CONCURRENCY` env var (default 10); prevents overwhelming target sites
+- **Configurable content fetch timeout** — `CONTENT_TIMEOUT_MS` env var (default 5000ms) for full-article fetching
+- **Mozilla Readability integration** — `readability=true` parameter strips navigation, sidebars, and ads; returns clean article HTML without requiring a content CSS selector
+- **Full-content extraction tests** — validates selectors against live feeds (Diego A. Manrique, Roger Senserrich, Vozpópuli)
+- **vdrss-url-builder skill** — step-by-step guide for generating VeryDirtyRSS feed URLs from any webpage, covering CSS selector identification, URL assembly, pagination, full-content fetching, and JSON API support
+
+### Fixed
+- **curl in Docker image** — added to production image for container health checks
+
+### Changed
+- README and AGENTS.md updated with documentation for all new features, env vars, and parameters
+- Builder UI and readability parameter documented in README
+
 ## [1.5.0] - 2026-06-23
 
 ### Added

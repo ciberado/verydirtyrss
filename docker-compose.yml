@@ -17,7 +17,7 @@ services:
     command: sh -c "tailscaled --tun=userspace-networking & sleep 5 && tailscale up --authkey=$${TS_AUTHKEY} --hostname=verydirtyrss && sleep 5 && tailscale serve --https=443 http://localhost:3000 && wait"
 
   verydirtyrss:
-    image: ciberado/verydirtyrss:1.1.0
+    image: ciberado/verydirtyrss:1.6.0
     container_name: verydirtyrss
     environment:
       - PORT=3000
