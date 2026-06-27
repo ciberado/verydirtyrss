@@ -160,7 +160,8 @@ export async function generateRssXml(params: FeedGenerationParams, fetchHtml: Fe
 
       if (link && selectors.contentSelector && fetchContent) {
         try {
-          const articleHtml = await fetchHtml(link, 5000);
+          const contentTimeoutMs = Number(process.env.CONTENT_TIMEOUT_MS) || 5_000;
+          const articleHtml = await fetchHtml(link, contentTimeoutMs);
           const article$ = cheerio.load(articleHtml);
           const fullContent = article$(selectors.contentSelector).html();
           if (fullContent) {
