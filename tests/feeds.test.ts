@@ -83,6 +83,7 @@ const FEEDS: FeedEntry[] = [
       content: '.a_c',
     },
     fetchContent: true,
+    readability: true,
   },
   {
     name: 'Roger Senserrich (4rooms)',
@@ -168,7 +169,10 @@ const FEEDS: FeedEntry[] = [
       title: '.entry-title',
       link: '.entry-title a',
       previous: '.nav-previous a',
+      content: '.entry-content',
     },
+    fetchContent: true,
+    readability: true,
   },
 ];
 
